@@ -1,4 +1,4 @@
-use dm2xcod::{ConvertOptions, DocxToMarkdown, Error};
+use undocx::{ConvertOptions, DocxToMarkdown, Error};
 use rs_docx::document::{
     BodyContent, Comment, CommentReference, Comments, EndNote, EndNotes, EndnoteReference,
     FootNote, FootNotes, FootnoteReference, Paragraph, Run, RunContent,
@@ -41,7 +41,7 @@ fn temp_docx_path(prefix: &str) -> PathBuf {
         .expect("system time must be after UNIX_EPOCH")
         .as_nanos();
     std::env::temp_dir().join(format!(
-        "dm2xcod_invariant_{}_{}_{}.docx",
+        "undocx_invariant_{}_{}_{}.docx",
         prefix,
         std::process::id(),
         nanos

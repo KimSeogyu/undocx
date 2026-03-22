@@ -1,11 +1,11 @@
-//! # dm2xcod
+//! # undocx
 //!
 //! DOCX to Markdown converter using `rs_docx`.
 //!
 //! ## Example
 //!
 //! ```no_run
-//! use dm2xcod::{DocxToMarkdown, ConvertOptions, ImageHandling};
+//! use undocx::{DocxToMarkdown, ConvertOptions, ImageHandling};
 //!
 //! let options = ConvertOptions {
 //!     image_handling: ImageHandling::SaveToDir("./images".into()),
@@ -20,11 +20,11 @@
 //! ## Advanced Example (Custom Extractor/Renderer)
 //!
 //! ```no_run
-//! use dm2xcod::adapters::docx::AstExtractor;
-//! use dm2xcod::converter::ConversionContext;
-//! use dm2xcod::core::ast::{BlockNode, DocumentAst};
-//! use dm2xcod::render::Renderer;
-//! use dm2xcod::{ConvertOptions, DocxToMarkdown, Result};
+//! use undocx::adapters::docx::AstExtractor;
+//! use undocx::converter::ConversionContext;
+//! use undocx::core::ast::{BlockNode, DocumentAst};
+//! use undocx::render::Renderer;
+//! use undocx::{ConvertOptions, DocxToMarkdown, Result};
 //! use rs_docx::document::BodyContent;
 //!
 //! #[derive(Debug, Default, Clone, Copy)]
@@ -147,7 +147,7 @@ mod python_bindings {
 
     /// A Python module implemented in Rust.
     #[pymodule]
-    pub fn dm2xcod(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    pub fn undocx(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.add_function(wrap_pyfunction!(convert_docx, m)?)?;
         Ok(())
     }

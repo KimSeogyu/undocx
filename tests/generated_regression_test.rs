@@ -1,4 +1,4 @@
-use dm2xcod::{ConvertOptions, DocxToMarkdown};
+use undocx::{ConvertOptions, DocxToMarkdown};
 use rs_docx::document::{
     AbstractNum, AbstractNumId, BodyContent, Comment, CommentReference, Comments, FootNote,
     FootNotes, FootnoteReference, Level, LevelStart, LevelText, Num, NumFmt, Numbering, Paragraph,
@@ -16,7 +16,7 @@ fn temp_docx_path(prefix: &str) -> PathBuf {
         .expect("system time must be after UNIX_EPOCH")
         .as_nanos();
     std::env::temp_dir().join(format!(
-        "dm2xcod_regression_{}_{}_{}.docx",
+        "undocx_regression_{}_{}_{}.docx",
         prefix,
         std::process::id(),
         nanos

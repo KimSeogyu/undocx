@@ -2,4 +2,4 @@
 name = "python_example"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["dm2xcod==0.2.2"]
+dependencies = ["undocx==0.2.2"]

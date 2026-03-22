@@ -1,13 +1,13 @@
-# dm2xcod
+# undocx
 
-[![PyPI](https://img.shields.io/pypi/v/dm2xcod.svg)](https://pypi.org/project/dm2xcod/)
+[![PyPI](https://img.shields.io/pypi/v/undocx.svg)](https://pypi.org/project/undocx/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 DOCX to Markdown converter in Rust with Python bindings.
 
 ## Table of Contents
 
-- [Why dm2xcod](#why-dm2xcod)
+- [Why undocx](#why-undocx)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -17,7 +17,7 @@ DOCX to Markdown converter in Rust with Python bindings.
 - [Development](#development)
 - [License](#license)
 
-## Why dm2xcod
+## Why undocx
 
 - Rust-based converter focused on predictable performance.
 - Covers common DOCX structures: headings, lists, tables, notes, links, images.
@@ -35,20 +35,20 @@ DOCX to Markdown converter in Rust with Python bindings.
 ### Python package
 
 ```bash
-pip install dm2xcod
+pip install undocx
 ```
 
 ### CLI (cargo)
 
 ```bash
-cargo install dm2xcod
+cargo install undocx
 ```
 
 ### Rust library
 
 ```toml
 [dependencies]
-dm2xcod = "0.3"
+undocx = "0.3"
 ```
 
 ## Quick Start
@@ -57,30 +57,30 @@ dm2xcod = "0.3"
 
 ```bash
 # write to file
-dm2xcod input.docx output.md
+undocx input.docx output.md
 
 # print markdown to stdout
-dm2xcod input.docx
+undocx input.docx
 ```
 
 ### Python
 
 ```python
-import dm2xcod
+import undocx
 
 # path input
-markdown = dm2xcod.convert_docx("document.docx")
+markdown = undocx.convert_docx("document.docx")
 print(markdown)
 
 # bytes input
 with open("document.docx", "rb") as f:
-    markdown = dm2xcod.convert_docx(f.read())
+    markdown = undocx.convert_docx(f.read())
 ```
 
 ### Rust
 
 ```rust
-use dm2xcod::{ConvertOptions, DocxToMarkdown};
+use undocx::{ConvertOptions, DocxToMarkdown};
 
 fn main() -> anyhow::Result<()> {
     let converter = DocxToMarkdown::new(ConvertOptions::default());
@@ -111,9 +111,9 @@ fn main() -> anyhow::Result<()> {
 Example with non-default options:
 
 ```rust
-use dm2xcod::{ConvertOptions, DocxToMarkdown, ImageHandling};
+use undocx::{ConvertOptions, DocxToMarkdown, ImageHandling};
 
-fn main() -> Result<(), dm2xcod::Error> {
+fn main() -> Result<(), undocx::Error> {
     let options = ConvertOptions {
         image_handling: ImageHandling::SaveToDir("./images".into()),
         preserve_whitespace: true,
@@ -134,11 +134,11 @@ fn main() -> Result<(), dm2xcod::Error> {
 `DocxToMarkdown::with_components(options, extractor, renderer)` lets you replace the default pipeline.
 
 ```rust
-use dm2xcod::adapters::docx::AstExtractor;
-use dm2xcod::converter::ConversionContext;
-use dm2xcod::core::ast::{BlockNode, DocumentAst};
-use dm2xcod::render::Renderer;
-use dm2xcod::{ConvertOptions, DocxToMarkdown, Result};
+use undocx::adapters::docx::AstExtractor;
+use undocx::converter::ConversionContext;
+use undocx::core::ast::{BlockNode, DocumentAst};
+use undocx::render::Renderer;
+use undocx::{ConvertOptions, DocxToMarkdown, Result};
 use rs_docx::document::BodyContent;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -180,13 +180,13 @@ fn main() -> Result<()> {
 
 ### Python API
 
-- `dm2xcod.convert_docx(input: str | bytes) -> str`
+- `undocx.convert_docx(input: str | bytes) -> str`
 - Current Python entry point uses default conversion options.
 
 ## CLI Reference
 
 ```text
-dm2xcod <INPUT> [OUTPUT] [--images-dir <DIR>] [--skip-images]
+undocx <INPUT> [OUTPUT] [--images-dir <DIR>] [--skip-images]
 ```
 
 | Argument/Option | Description |

@@ -1,11 +1,11 @@
-use dm2xcod::{ConvertOptions, DocxToMarkdown};
+use undocx::{ConvertOptions, DocxToMarkdown};
 use std::fs::{create_dir_all, read_dir, File};
 use std::io::Write;
 use std::process::Command;
 
 #[test]
 fn test_cli_help() {
-    let output = Command::new(env!("CARGO_BIN_EXE_dm2xcod"))
+    let output = Command::new(env!("CARGO_BIN_EXE_undocx"))
         .arg("--help")
         .output()
         .expect("Failed to execute command");

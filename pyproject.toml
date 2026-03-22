@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "dm2xcod"
+name = "undocx"
 version = "0.3.14"
 description = "DOCX to Markdown converter written in Rust"
 readme = "README.md"
@@ -25,10 +25,10 @@ classifiers = [
 keywords = ["docx", "markdown", "converter", "document"]
 
 [project.urls]
-Homepage = "https://github.com/KimSeogyu/dm2xcod"
-Repository = "https://github.com/KimSeogyu/dm2xcod"
-Issues = "https://github.com/KimSeogyu/dm2xcod/issues"
+Homepage = "https://github.com/KimSeogyu/undocx"
+Repository = "https://github.com/KimSeogyu/undocx"
+Issues = "https://github.com/KimSeogyu/undocx/issues"
 
 [tool.maturin]
 features = ["python"]
-module-name = "dm2xcod"
+module-name = "undocx"

@@ -1,4 +1,4 @@
-use dm2xcod::{ConvertOptions, DocxToMarkdown, Result};
+use undocx::{ConvertOptions, DocxToMarkdown, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Instant;

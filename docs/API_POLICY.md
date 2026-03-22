@@ -2,7 +2,7 @@
 
 ## Scope
 
-This policy applies to the public Rust API exposed from `dm2xcod`:
+This policy applies to the public Rust API exposed from `undocx`:
 
 - `DocxToMarkdown`
 - `ConvertOptions`

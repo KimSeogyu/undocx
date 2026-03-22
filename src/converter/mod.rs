@@ -274,7 +274,7 @@ mod tests {
             .expect("system time must be after UNIX_EPOCH")
             .as_nanos();
         std::env::temp_dir().join(format!(
-            "dm2xcod_converter_{}_{}_{}.docx",
+            "undocx_converter_{}_{}_{}.docx",
             prefix,
             std::process::id(),
             nanos
