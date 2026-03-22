@@ -1,7 +1,7 @@
-//! CLI for dm2xcod - DOCX to Markdown converter
+//! CLI for undocx - DOCX to Markdown converter
 
 use clap::Parser;
-use dm2xcod::{ConvertOptions, DocxToMarkdown, ImageHandling};
+use undocx::{ConvertOptions, DocxToMarkdown, ImageHandling};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]

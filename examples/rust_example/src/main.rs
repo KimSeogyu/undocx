@@ -1,4 +1,4 @@
-use dm2xcod::{ConvertOptions, DocxToMarkdown, ImageHandling};
+use undocx::{ConvertOptions, DocxToMarkdown, ImageHandling};
 use std::env;
 
 fn main() {

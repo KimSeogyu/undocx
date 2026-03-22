@@ -1,13 +1,13 @@
 [package]
-name = "dm2xcod"
+name = "undocx"
 version = "0.3.14"
 edition = "2021"
 rust-version = "1.75"
 description = "DOCX to Markdown converter written in Rust"
 license = "MIT"
-repository = "https://github.com/KimSeogyu/dm2xcod"
-homepage = "https://github.com/KimSeogyu/dm2xcod"
-documentation = "https://docs.rs/dm2xcod"
+repository = "https://github.com/KimSeogyu/undocx"
+homepage = "https://github.com/KimSeogyu/undocx"
+documentation = "https://docs.rs/undocx"
 readme = "README.md"
 keywords = ["docx", "markdown", "converter", "document", "office"]
 categories = [
@@ -24,7 +24,7 @@ include = [
     "README.md",
     "pyproject.toml",
 ]
-default-run = "dm2xcod"
+default-run = "undocx"
 
 
 [features]
@@ -43,7 +43,7 @@ pyo3 = { version = "0.23", features = [
 ], optional = true }
 
 [lib]
-name = "dm2xcod"
+name = "undocx"
 crate-type = ["cdylib", "rlib"]
 
 [dev-dependencies]

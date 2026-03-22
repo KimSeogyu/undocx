@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Example script demonstrating dm2xcod Python bindings.
-Install: pip install dm2xcod
+Example script demonstrating undocx Python bindings.
+Install: pip install undocx
 """
 
 import sys
@@ -9,9 +9,9 @@ import sys
 
 def main():
     try:
-        import dm2xcod
+        import undocx
     except ImportError:
-        print("❌ dm2xcod not installed. Install with: pip install dm2xcod")
+        print("❌ undocx not installed. Install with: pip install undocx")
         sys.exit(1)
 
     if len(sys.argv) < 2:
@@ -27,7 +27,7 @@ def main():
         with open(input_file, "rb") as f:
             data = f.read()
 
-        markdown = dm2xcod.convert_docx(data)
+        markdown = undocx.convert_docx(data)
 
         if output_file:
             with open(output_file, "w", encoding="utf-8") as f:
