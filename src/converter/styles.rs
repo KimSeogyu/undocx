@@ -103,8 +103,12 @@ impl<'a> StyleResolver<'a> {
 
         let mut chain = Vec::new();
         let mut current_id = Some(style_id);
+        let mut visited = std::collections::HashSet::new();
 
         while let Some(id) = current_id {
+            if !visited.insert(id) {
+                break; // cycle detected
+            }
             if let Some(style) = self.style_map.get(id) {
                 chain.push(style);
                 current_id = style.base.as_ref().map(|b| b.value.as_ref());
@@ -124,8 +128,12 @@ impl<'a> StyleResolver<'a> {
     fn apply_style_chain_para(&self, target: &mut ParagraphProperty<'a>, style_id: &str) {
         let mut chain = Vec::new();
         let mut current_id = Some(style_id);
+        let mut visited = std::collections::HashSet::new();
 
         while let Some(id) = current_id {
+            if !visited.insert(id) {
+                break; // cycle detected
+            }
             if let Some(style) = self.style_map.get(id) {
                 chain.push(style);
                 current_id = style.base.as_ref().map(|b| b.value.as_ref());
@@ -168,5 +176,43 @@ fn merge_para_props_mut<'a>(target: &mut ParagraphProperty<'a>, overlay: &Paragr
     }
     if overlay.style_id.is_some() {
         target.style_id = overlay.style_id.clone();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rs_docx::styles::{BasedOn, Style, StyleType, Styles};
+
+    fn make_cyclic_styles() -> Styles<'static> {
+        let mut style_a = Style::new(StyleType::Paragraph, "styleA");
+        style_a.base = Some(BasedOn {
+            value: std::borrow::Cow::Borrowed("styleB"),
+        });
+
+        let mut style_b = Style::new(StyleType::Paragraph, "styleB");
+        style_b.base = Some(BasedOn {
+            value: std::borrow::Cow::Borrowed("styleA"),
+        });
+
+        let mut styles = Styles::new();
+        styles.push(style_a);
+        styles.push(style_b);
+        styles
+    }
+
+    #[test]
+    fn test_style_chain_cycle_terminates() {
+        let styles = make_cyclic_styles();
+        let resolver = StyleResolver::new(&styles);
+        // Must return without hanging – cycle detection required
+        let _props = resolver.resolve_run_property(None, Some("styleA"), None);
+    }
+
+    #[test]
+    fn test_style_chain_cycle_para_terminates() {
+        let styles = make_cyclic_styles();
+        let resolver = StyleResolver::new(&styles);
+        let _props = resolver.resolve_paragraph_property(None, Some("styleA"));
     }
 }

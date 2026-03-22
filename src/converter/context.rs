@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 /// Context passed through conversion for shared mutable state.
 pub struct ConversionContext<'a> {
     rels: &'a HashMap<String, String>,
-    numbering: &'a mut NumberingResolver<'a>,
+    numbering: &'a mut NumberingResolver,
     image_extractor: &'a mut ImageExtractor,
     options: &'a ConvertOptions,
     style_resolver: &'a StyleResolver<'a>,
@@ -26,7 +26,7 @@ impl<'a> ConversionContext<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         rels: &'a HashMap<String, String>,
-        numbering: &'a mut NumberingResolver<'a>,
+        numbering: &'a mut NumberingResolver,
         image_extractor: &'a mut ImageExtractor,
         options: &'a ConvertOptions,
         docx_comments: Option<&'a rs_docx::document::Comments<'a>>,

@@ -171,13 +171,80 @@ impl RunConverter {
         }
 
         if is_bold && is_italic {
-            result = format!("<strong>*{}*</strong>", result);
+            result = format!("<strong><em>{}</em></strong>", result);
         } else if is_bold {
             result = format!("<strong>{}</strong>", result);
         } else if is_italic {
-            result = format!("*{}*", result);
+            result = format!("<em>{}</em>", result);
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hard_xml::XmlRead;
+    use rs_docx::document::{Run, RunContent, Text};
+    use rs_docx::formatting::{Bold, CharacterProperty, Italics};
+
+    #[test]
+    fn test_plain_text_run() {
+        make_test_context!(ctx);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_bold_run() {
+        make_test_context!(ctx);
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                bold: Some(Bold { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert_eq!(result, "<strong>hello</strong>");
+    }
+
+    #[test]
+    fn test_italic_run() {
+        make_test_context!(ctx);
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                italics: Some(Italics { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert_eq!(result, "<em>hello</em>");
+    }
+
+    #[test]
+    fn test_sym_character() {
+        make_test_context!(ctx);
+        let run = Run::from_str(
+            r#"<w:r xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:sym w:char="2022"/></w:r>"#,
+        )
+        .unwrap();
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert!(result.contains('\u{2022}'));
     }
 }

@@ -1,6 +1,92 @@
 //! Converter modules for DOCX to Markdown transformation.
 
-mod hyperlink;
+/// Test helper macros for creating `ConversionContext` without boilerplate.
+///
+/// The macros expand `let` bindings into the caller's scope so all intermediate
+/// values (`rels`, `numbering_resolver`, `image_extractor`, `style_resolver`,
+/// `options`) outlive the `ConversionContext` they are borrowed by.
+/// A function cannot return the context because the self-referential borrow
+/// chain would be dropped on return.
+#[cfg(test)]
+macro_rules! make_test_context {
+    ($ctx:ident) => {
+        let __docx = rs_docx::Docx::default();
+        let __rels = std::collections::HashMap::<String, String>::new();
+        let mut __numbering_resolver = $crate::converter::NumberingResolver::new(&__docx);
+        let mut __image_extractor = $crate::converter::ImageExtractor::new_skip();
+        let __options = $crate::ConvertOptions::default();
+        let __style_resolver = $crate::converter::StyleResolver::new(&__docx.styles);
+        let mut $ctx = $crate::converter::ConversionContext::new(
+            &__rels,
+            &mut __numbering_resolver,
+            &mut __image_extractor,
+            &__options,
+            None,
+            None,
+            None,
+            &__style_resolver,
+        );
+    };
+}
+
+#[cfg(test)]
+macro_rules! make_test_context_ext {
+    ($ctx:ident, docx: $docx_expr:expr) => {
+        let __docx = $docx_expr;
+        let __rels = std::collections::HashMap::<String, String>::new();
+        let mut __numbering_resolver = $crate::converter::NumberingResolver::new(&__docx);
+        let mut __image_extractor = $crate::converter::ImageExtractor::new_skip();
+        let __options = $crate::ConvertOptions::default();
+        let __style_resolver = $crate::converter::StyleResolver::new(&__docx.styles);
+        let mut $ctx = $crate::converter::ConversionContext::new(
+            &__rels,
+            &mut __numbering_resolver,
+            &mut __image_extractor,
+            &__options,
+            __docx.comments.as_ref(),
+            __docx.footnotes.as_ref(),
+            __docx.endnotes.as_ref(),
+            &__style_resolver,
+        );
+    };
+    ($ctx:ident, options: $opts_expr:expr) => {
+        let __docx = rs_docx::Docx::default();
+        let __rels = std::collections::HashMap::<String, String>::new();
+        let mut __numbering_resolver = $crate::converter::NumberingResolver::new(&__docx);
+        let mut __image_extractor = $crate::converter::ImageExtractor::new_skip();
+        let __options = $opts_expr;
+        let __style_resolver = $crate::converter::StyleResolver::new(&__docx.styles);
+        let mut $ctx = $crate::converter::ConversionContext::new(
+            &__rels,
+            &mut __numbering_resolver,
+            &mut __image_extractor,
+            &__options,
+            None,
+            None,
+            None,
+            &__style_resolver,
+        );
+    };
+    ($ctx:ident, rels: $rels_expr:expr) => {
+        let __docx = rs_docx::Docx::default();
+        let __rels = $rels_expr;
+        let mut __numbering_resolver = $crate::converter::NumberingResolver::new(&__docx);
+        let mut __image_extractor = $crate::converter::ImageExtractor::new_skip();
+        let __options = $crate::ConvertOptions::default();
+        let __style_resolver = $crate::converter::StyleResolver::new(&__docx.styles);
+        let mut $ctx = $crate::converter::ConversionContext::new(
+            &__rels,
+            &mut __numbering_resolver,
+            &mut __image_extractor,
+            &__options,
+            None,
+            None,
+            None,
+            &__style_resolver,
+        );
+    };
+}
+
 mod image;
 mod numbering;
 mod paragraph;
@@ -23,7 +109,6 @@ use std::collections::HashMap;
 use std::path::Path;
 
 pub use self::context::ConversionContext;
-pub use self::hyperlink::resolve_hyperlink;
 pub use self::image::ImageExtractor;
 pub use self::numbering::NumberingResolver;
 pub use self::paragraph::ParagraphConverter;
@@ -362,26 +447,7 @@ mod tests {
 
     #[test]
     fn test_convert_content_sdt_with_bookmark() {
-        // Setup mock docx parts
-        let styles = rs_docx::styles::Styles::new();
-        let docx = rs_docx::Docx::default();
-
-        let mut numbering_resolver = NumberingResolver::new(&docx);
-        let mut image_extractor = ImageExtractor::new_skip();
-        let options = ConvertOptions::default();
-        let rels = HashMap::new();
-        let style_resolver = StyleResolver::new(&styles);
-
-        let mut context = ConversionContext::new(
-            &rels,
-            &mut numbering_resolver,
-            &mut image_extractor,
-            &options,
-            None,
-            None,
-            None,
-            &style_resolver,
-        );
+        make_test_context!(context);
 
         // Construct SDT with nested BookmarkStart and Paragraph
         let mut sdt = SDT::default();
