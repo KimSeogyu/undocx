@@ -74,19 +74,17 @@ This document demonstrates <strong>various formatting features</strong> that `un
 
 ### Code Block Example
 
-```
-use undocx::Parser;
- 
+```rust
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let parser = Parser::new("document.docx")?;
-    let markdown = parser.to_markdown()?;
-    std::fs::write("output.md", &markdown)?;
-    println!("Converted {} elements", parser.stats().total);
+    // One-liner conversion
+    let md = undocx::convert("document.docx")?;
+    std::fs::write("output.md", &md)?;
+    println!("Converted to Markdown ({} bytes)", md.len());
     Ok(())
 }
 ```
 
-<div style="text-align: center;">Built with ❤ in Rust. <em>MIT Licensed</em> · [<u>Documentation</u>](https://undocx.dev/docs) · [<u>GitHub</u>](https://github.com/undocx)</div>
+<div style="text-align: center;">Built with ❤ in Rust. <em>MIT Licensed</em> · [<u>Documentation</u>](https://docs.rs/undocx) · [<u>GitHub</u>](https://github.com/KimSeogyu/undocx)</div>
 
 ---
 

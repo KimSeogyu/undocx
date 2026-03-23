@@ -7,6 +7,7 @@
 
 ## Quick Start
 
+- [API Guide](https://github.com/KimSeogyu/undocx/blob/main/docs/guide.md): Comprehensive usage guide with Rust, Python, and CLI examples
 - [Crate docs (API reference)](https://docs.rs/undocx/latest/undocx/): Full Rust API documentation with examples
 - [PyPI package](https://pypi.org/project/undocx/): Python bindings installation and usage
 - [GitHub repository](https://github.com/KimSeogyu/undocx): Source code, issues, and contributing guide
