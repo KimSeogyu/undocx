@@ -18,6 +18,9 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+permissions:
+  contents: write
+
 jobs:
   notes:
     name: Generate Notes
@@ -41,3 +44,12 @@ jobs:
           path: output_tests/release_notes.md
       - name: Add summary
         run: cat ./output_tests/release_notes.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          gh release create "${TAG}" \
+            --title "${TAG}" \
+            --notes-file ./output_tests/release_notes.md
