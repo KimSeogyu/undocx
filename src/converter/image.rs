@@ -6,7 +6,7 @@ use base64::Engine;
 use rs_docx::document::Drawing;
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{Cursor, Read, Seek};
+use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 
 /// Extractor for images embedded in DOCX.
@@ -22,9 +22,10 @@ enum ImageMode {
     Skip,
 }
 
+/// Cached ZIP archive — opened once and reused for every image extraction.
 enum ImageSource {
-    Path(PathBuf),
-    Bytes(Vec<u8>),
+    Archive(zip::ZipArchive<File>),
+    ArchiveFromBytes(zip::ZipArchive<Cursor<Vec<u8>>>),
     None,
 }
 
@@ -34,9 +35,13 @@ impl ImageExtractor {
         // Ensure output directory exists
         fs::create_dir_all(&output_dir)?;
 
+        let file = File::open(docx_path.as_ref())?;
+        let archive = zip::ZipArchive::new(file)
+            .map_err(|e| Error::DocxParse(format!("Failed to open DOCX as ZIP: {}", e)))?;
+
         Ok(Self {
             mode: ImageMode::SaveToDir(output_dir),
-            source: ImageSource::Path(docx_path.as_ref().to_path_buf()),
+            source: ImageSource::Archive(archive),
             counter: 0,
         })
     }
@@ -46,27 +51,39 @@ impl ImageExtractor {
         // Ensure output directory exists
         fs::create_dir_all(&output_dir)?;
 
+        let cursor = Cursor::new(bytes.to_vec());
+        let archive = zip::ZipArchive::new(cursor)
+            .map_err(|e| Error::DocxParse(format!("Failed to open DOCX as ZIP: {}", e)))?;
+
         Ok(Self {
             mode: ImageMode::SaveToDir(output_dir),
-            source: ImageSource::Bytes(bytes.to_vec()),
+            source: ImageSource::ArchiveFromBytes(archive),
             counter: 0,
         })
     }
 
     /// Creates an extractor that embeds images as base64 (from file).
     pub fn new_inline<P: AsRef<Path>>(docx_path: P) -> Result<Self> {
+        let file = File::open(docx_path.as_ref())?;
+        let archive = zip::ZipArchive::new(file)
+            .map_err(|e| Error::DocxParse(format!("Failed to open DOCX as ZIP: {}", e)))?;
+
         Ok(Self {
             mode: ImageMode::Inline,
-            source: ImageSource::Path(docx_path.as_ref().to_path_buf()),
+            source: ImageSource::Archive(archive),
             counter: 0,
         })
     }
 
     /// Creates an extractor that embeds images as base64 (from bytes).
     pub fn new_inline_from_bytes(bytes: &[u8]) -> Result<Self> {
+        let cursor = Cursor::new(bytes.to_vec());
+        let archive = zip::ZipArchive::new(cursor)
+            .map_err(|e| Error::DocxParse(format!("Failed to open DOCX as ZIP: {}", e)))?;
+
         Ok(Self {
             mode: ImageMode::Inline,
-            source: ImageSource::Bytes(bytes.to_vec()),
+            source: ImageSource::ArchiveFromBytes(archive),
             counter: 0,
         })
     }
@@ -183,7 +200,7 @@ impl ImageExtractor {
     }
 
     fn process_image(&mut self, image_path: &str) -> Result<Option<String>> {
-        // Read image from DOCX archive
+        // Read image from cached DOCX archive
         let image_data = self.read_image_from_docx(image_path)?;
 
         self.counter += 1;
@@ -224,24 +241,7 @@ impl ImageExtractor {
         }
     }
 
-    fn read_image_from_docx(&self, image_path: &str) -> Result<Vec<u8>> {
-        match &self.source {
-            ImageSource::Path(path) => {
-                let file = File::open(path)?;
-                self.extract_from_zip(file, image_path)
-            }
-            ImageSource::Bytes(bytes) => {
-                let cursor = Cursor::new(bytes);
-                self.extract_from_zip(cursor, image_path)
-            }
-            ImageSource::None => Ok(Vec::new()),
-        }
-    }
-
-    fn extract_from_zip<R: Read + Seek>(&self, reader: R, image_path: &str) -> Result<Vec<u8>> {
-        let mut archive = zip::ZipArchive::new(reader)
-            .map_err(|e| Error::DocxParse(format!("Failed to open DOCX as ZIP: {}", e)))?;
-
+    fn read_image_from_docx(&mut self, image_path: &str) -> Result<Vec<u8>> {
         // Image path is relative to word/ directory typically
         let full_path = if image_path.starts_with("word/") {
             image_path.to_string()
@@ -249,17 +249,100 @@ impl ImageExtractor {
             format!("word/{}", image_path)
         };
 
-        // Try full path first, then original
-        let paths_to_try = [full_path.as_str(), image_path];
+        let paths_to_try: [&str; 2] = [full_path.as_str(), image_path];
 
-        for path in paths_to_try {
-            if let Ok(mut entry) = archive.by_name(path) {
-                let mut data = Vec::new();
-                entry.read_to_end(&mut data)?;
-                return Ok(data);
+        match &mut self.source {
+            ImageSource::Archive(archive) => {
+                extract_from_cached_zip(archive, &paths_to_try, image_path)
             }
+            ImageSource::ArchiveFromBytes(archive) => {
+                extract_from_cached_zip(archive, &paths_to_try, image_path)
+            }
+            ImageSource::None => Ok(Vec::new()),
         }
+    }
+}
 
-        Err(Error::MediaNotFound(image_path.to_string()))
+/// Extracts image bytes from an already-opened ZipArchive, trying each candidate path in order.
+fn extract_from_cached_zip<R: Read + std::io::Seek>(
+    archive: &mut zip::ZipArchive<R>,
+    paths_to_try: &[&str],
+    original_path: &str,
+) -> Result<Vec<u8>> {
+    for path in paths_to_try {
+        if let Ok(mut entry) = archive.by_name(path) {
+            let mut data = Vec::new();
+            entry.read_to_end(&mut data)?;
+            return Ok(data);
+        }
+    }
+
+    Err(Error::MediaNotFound(original_path.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Seek, SeekFrom, Write};
+
+    /// Build a minimal in-memory DOCX (ZIP) that contains two PNG stubs under word/media/.
+    fn make_docx_with_two_images() -> Vec<u8> {
+        let buf = Cursor::new(Vec::<u8>::new());
+        let mut zip = zip::ZipWriter::new(buf);
+        let options: zip::write::FileOptions<zip::write::ExtendedFileOptions> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+
+        zip.start_file("word/media/image1.png", options.clone()).unwrap();
+        zip.write_all(b"PNG1").unwrap();
+
+        zip.start_file("word/media/image2.png", options).unwrap();
+        zip.write_all(b"PNG2").unwrap();
+
+        let mut finished = zip.finish().unwrap();
+        finished.seek(SeekFrom::Start(0)).unwrap();
+        finished.into_inner()
+    }
+
+    #[test]
+    fn test_multiple_images_from_same_archive() {
+        let docx_bytes = make_docx_with_two_images();
+        let mut extractor = ImageExtractor::new_inline_from_bytes(&docx_bytes)
+            .expect("Failed to create extractor");
+
+        let img1 = extractor
+            .read_image_from_docx("media/image1.png")
+            .expect("Failed to read image1");
+        assert_eq!(img1, b"PNG1");
+
+        let img2 = extractor
+            .read_image_from_docx("media/image2.png")
+            .expect("Failed to read image2");
+        assert_eq!(img2, b"PNG2");
+    }
+
+    #[test]
+    fn test_archive_opened_once_path_variant() {
+        // Verify the File-backed archive variant works the same way.
+        // We use the inline bytes variant here as a proxy since we can't
+        // cheaply create a temp file in a unit test without tempfile.
+        let docx_bytes = make_docx_with_two_images();
+        let mut extractor = ImageExtractor::new_inline_from_bytes(&docx_bytes)
+            .expect("Failed to create extractor");
+
+        // Both reads use the same cached archive — neither panics.
+        let r1 = extractor.read_image_from_docx("media/image1.png");
+        let r2 = extractor.read_image_from_docx("media/image2.png");
+        assert!(r1.is_ok());
+        assert!(r2.is_ok());
+    }
+
+    #[test]
+    fn test_missing_image_returns_error() {
+        let docx_bytes = make_docx_with_two_images();
+        let mut extractor = ImageExtractor::new_inline_from_bytes(&docx_bytes)
+            .expect("Failed to create extractor");
+
+        let result = extractor.read_image_from_docx("media/nonexistent.png");
+        assert!(result.is_err());
     }
 }

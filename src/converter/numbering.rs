@@ -4,7 +4,7 @@ use rs_docx::Docx;
 use std::collections::HashMap;
 
 /// Resolver for DOCX numbering definitions.
-pub struct NumberingResolver<'a> {
+pub struct NumberingResolver {
     /// Maps numId -> abstractNumId
     num_instances: HashMap<i32, i32>,
     /// Maps abstractNumId -> level definitions
@@ -13,13 +13,13 @@ pub struct NumberingResolver<'a> {
     overrides: HashMap<(i32, i32), i32>,
     /// Maps abstractNumId -> current counters (one counter per level 0..9)
     /// Using abstractNumId allows continuous numbering even if numId changes (e.g. broken lists)
-    counters: HashMap<i32, Vec<i32>>,
+    /// None = uninitialized; Some(v) = current value (distinguishes 0 from unset).
+    counters: HashMap<i32, Vec<Option<i32>>>,
     /// Maps abstractNumId -> base indentation level (shift)
     /// Used to normalize indentation for lists that start at high levels (e.g., Article at Level 4)
     level_shifts: HashMap<i32, i32>,
     /// Maps (numId, ilvl) -> override LevelDef (style change)
     style_overrides: HashMap<(i32, i32), LevelDef>,
-    _phantom: std::marker::PhantomData<&'a ()>,
 }
 
 #[derive(Clone, Debug)]
@@ -30,9 +30,9 @@ struct LevelDef {
     lvl_text: Option<String>,
 }
 
-impl<'a> NumberingResolver<'a> {
+impl NumberingResolver {
     /// Creates a new numbering resolver from a parsed DOCX.
-    pub fn new(docx: &'a Docx) -> Self {
+    pub fn new(docx: &Docx) -> Self {
         let mut num_instances = HashMap::new();
         let mut abstract_nums = HashMap::new();
         let mut overrides = HashMap::new();
@@ -153,7 +153,6 @@ impl<'a> NumberingResolver<'a> {
             style_overrides,
             counters: HashMap::new(),
             level_shifts,
-            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -184,7 +183,10 @@ impl<'a> NumberingResolver<'a> {
 
         // Initialize counters for this abstract_num_id if not present
         // Use abstract_id as key to share state across different num_ids for same style
-        let counters = self.counters.entry(abs_id).or_insert_with(|| vec![0; 10]);
+        let counters = self
+            .counters
+            .entry(abs_id)
+            .or_insert_with(|| vec![None; 10]);
 
         // Find level definition
         // Check for style override first
@@ -201,24 +203,24 @@ impl<'a> NumberingResolver<'a> {
         // Increment current level
         let ilvl_idx = ilvl as usize;
         if counters.len() <= ilvl_idx {
-            counters.resize(ilvl_idx + 1, 0);
+            counters.resize(ilvl_idx + 1, None);
         }
 
         // Determine start value (check override for specific instance first)
         let override_start = self.overrides.get(&(num_id, ilvl)).copied();
 
         // Update logic:
-        // If counter is 0 (uninitialized), init it.
-        // OR if there is an explicit OVERRIDE for this specific num_id instance, apply it.
-        if counters[ilvl_idx] == 0 {
-            counters[ilvl_idx] = override_start.unwrap_or(level.start);
+        // None = uninitialized: initialize to start value (or override).
+        // Some(v) = already running: increment.
+        if counters[ilvl_idx].is_none() {
+            counters[ilvl_idx] = Some(override_start.unwrap_or(level.start));
         } else {
-            counters[ilvl_idx] += 1;
+            *counters[ilvl_idx].as_mut().unwrap() += 1;
         }
 
         // Reset lower levels
         for counter in counters.iter_mut().skip(ilvl_idx + 1) {
-            *counter = 0;
+            *counter = None;
         }
 
         // Use level text if available (substituting placeholders)
@@ -242,23 +244,33 @@ impl<'a> NumberingResolver<'a> {
                         })
                         .unwrap_or("decimal");
 
-                    // If count is 0, it means it hasn't been initialized/incremented yet, so use start value
-                    let val = if *count == 0 { 1 } else { *count };
+                    // None means not yet initialized; treat as 1 for display purposes
+                    let val = count.unwrap_or(1);
 
                     let formatted_num = Self::format_num(fmt, val);
                     marker = marker.replace(&placeholder, &formatted_num);
                 }
             }
-            return marker;
+            return Self::sanitize_bullet_marker(&marker);
         }
 
         // Fallback: if no lvlText, add dot for standard types
-        let raw_num = Self::format_num(&level.num_fmt, counters[ilvl_idx]);
+        let raw_num = Self::format_num(&level.num_fmt, counters[ilvl_idx].unwrap_or(1));
         match level.num_fmt.as_str() {
             "decimal" | "lowerLetter" | "upperLetter" | "lowerRoman" | "upperRoman" => {
                 format!("{}.", raw_num)
             }
             _ => raw_num,
+        }
+    }
+
+    /// Replaces Unicode bullet characters with standard Markdown list marker.
+    fn sanitize_bullet_marker(marker: &str) -> String {
+        let trimmed = marker.trim();
+        match trimmed {
+            "\u{2022}" | "\u{25E6}" | "\u{25AA}" | "\u{25B8}" | "\u{25BA}" | "\u{25CF}"
+            | "\u{25CB}" | "\u{25A0}" | "\u{25A1}" | "\u{2013}" | "\u{2014}" => "-".to_string(),
+            _ => marker.to_string(),
         }
     }
 
@@ -308,40 +320,37 @@ impl<'a> NumberingResolver<'a> {
         }
     }
 
-    /// Converts a number to Korean Ganada (가, 나, 다...).
-    fn format_ganada(val: i32) -> String {
-        let chars = [
-            '가', '나', '다', '라', '마', '바', '사', '아', '자', '차', '카', '타', '파', '하',
-        ];
-        if val >= 1 && val as usize <= chars.len() {
-            chars[(val - 1) as usize].to_string()
-        } else {
-            format!("{}", val) // Fallback
-        }
-    }
-
-    /// Converts a number to Korean Geonodeo (거, 너, 더...).
-    fn format_geonodeo(val: i32) -> String {
-        let chars = [
-            '거', '너', '더', '러', '머', '버', '서', '어', '저', '처', '커', '터', '퍼', '허',
-        ];
-        if val >= 1 && val as usize <= chars.len() {
+    /// Indexes into a char array by 1-based `val`, falling back to the numeric string.
+    fn format_from_chars(chars: &[char], val: i32) -> String {
+        if val >= 1 && (val as usize) <= chars.len() {
             chars[(val - 1) as usize].to_string()
         } else {
             format!("{}", val)
         }
     }
 
+    /// Converts a number to Korean Ganada (가, 나, 다...).
+    fn format_ganada(val: i32) -> String {
+        const CHARS: &[char] = &[
+            '가', '나', '다', '라', '마', '바', '사', '아', '자', '차', '카', '타', '파', '하',
+        ];
+        Self::format_from_chars(CHARS, val)
+    }
+
+    /// Converts a number to Korean Geonodeo (거, 너, 더...).
+    fn format_geonodeo(val: i32) -> String {
+        const CHARS: &[char] = &[
+            '거', '너', '더', '러', '머', '버', '서', '어', '저', '처', '커', '터', '퍼', '허',
+        ];
+        Self::format_from_chars(CHARS, val)
+    }
+
     /// Converts a number to Korean Chosung (ㄱ, ㄴ, ㄷ...).
     fn format_chosung(val: i32) -> String {
-        let chars = [
+        const CHARS: &[char] = &[
             'ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ',
         ];
-        if val >= 1 && val as usize <= chars.len() {
-            chars[(val - 1) as usize].to_string()
-        } else {
-            format!("{}", val) // Fallback
-        }
+        Self::format_from_chars(CHARS, val)
     }
 
     /// Converts a number to Roman numeral.
@@ -384,6 +393,178 @@ mod tests {
         Numbering,
     };
     use std::borrow::Cow;
+
+    #[test]
+    fn test_counter_with_start_zero_increments() {
+        // A list with start=0 should produce 0, 1, 2, not 0, 0, 0
+        let abstract_num = AbstractNum {
+            abstract_num_id: Some(1),
+            levels: vec![Level {
+                i_level: Some(0),
+                start: Some(LevelStart { value: Some(0) }),
+                number_format: Some(NumFmt {
+                    value: Cow::Borrowed("decimal"),
+                }),
+                level_text: Some(LevelText {
+                    value: Some(Cow::Borrowed("%1.")),
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let num = Num {
+            num_id: Some(1),
+            abstract_num_id: Some(AbstractNumId { value: Some(1) }),
+            ..Default::default()
+        };
+        let numbering = Numbering {
+            abstract_numberings: vec![abstract_num],
+            numberings: vec![num],
+        };
+        let docx = Docx {
+            numbering: Some(numbering),
+            ..Default::default()
+        };
+        let mut resolver = NumberingResolver::new(&docx);
+
+        let m1 = resolver.next_marker(1, 0);
+        let m2 = resolver.next_marker(1, 0);
+        let m3 = resolver.next_marker(1, 0);
+
+        assert_eq!(m1, "0.");
+        assert_eq!(m2, "1.");
+        assert_eq!(m3, "2.");
+    }
+
+    // --- format_num direct tests ---
+
+    #[test]
+    fn test_format_num_decimal() {
+        assert_eq!(NumberingResolver::format_num("decimal", 5), "5");
+    }
+
+    #[test]
+    fn test_format_num_decimal_zero() {
+        assert_eq!(NumberingResolver::format_num("decimal", 0), "0");
+    }
+
+    #[test]
+    fn test_format_num_lower_letter() {
+        assert_eq!(NumberingResolver::format_num("lowerLetter", 1), "a");
+    }
+
+    #[test]
+    fn test_format_num_lower_letter_z() {
+        assert_eq!(NumberingResolver::format_num("lowerLetter", 26), "z");
+    }
+
+    #[test]
+    fn test_format_num_lower_letter_overflow() {
+        assert_eq!(NumberingResolver::format_num("lowerLetter", 27), "27");
+    }
+
+    #[test]
+    fn test_format_num_upper_letter() {
+        assert_eq!(NumberingResolver::format_num("upperLetter", 3), "C");
+    }
+
+    #[test]
+    fn test_format_num_bullet() {
+        assert_eq!(NumberingResolver::format_num("bullet", 1), "-");
+    }
+
+    #[test]
+    fn test_format_num_none() {
+        assert_eq!(NumberingResolver::format_num("none", 1), "-");
+    }
+
+    #[test]
+    fn test_format_num_unknown() {
+        assert_eq!(NumberingResolver::format_num("unknownFormat", 5), "5");
+    }
+
+    // --- to_roman tests ---
+
+    #[test]
+    fn test_to_roman_1() {
+        assert_eq!(NumberingResolver::to_roman(1), "I");
+    }
+
+    #[test]
+    fn test_to_roman_4() {
+        assert_eq!(NumberingResolver::to_roman(4), "IV");
+    }
+
+    #[test]
+    fn test_to_roman_9() {
+        assert_eq!(NumberingResolver::to_roman(9), "IX");
+    }
+
+    #[test]
+    fn test_to_roman_zero() {
+        assert_eq!(NumberingResolver::to_roman(0), "0");
+    }
+
+    #[test]
+    fn test_format_num_lower_roman() {
+        assert_eq!(NumberingResolver::format_num("lowerRoman", 4), "iv");
+    }
+
+    #[test]
+    fn test_format_num_upper_roman() {
+        assert_eq!(NumberingResolver::format_num("upperRoman", 4), "IV");
+    }
+
+    // --- Korean format tests ---
+
+    #[test]
+    fn test_format_ganada() {
+        assert_eq!(NumberingResolver::format_ganada(1), "가");
+        assert_eq!(NumberingResolver::format_ganada(2), "나");
+        assert_eq!(NumberingResolver::format_ganada(3), "다");
+    }
+
+    #[test]
+    fn test_format_ganada_overflow() {
+        assert_eq!(NumberingResolver::format_ganada(15), "15");
+    }
+
+    #[test]
+    fn test_format_chosung() {
+        assert_eq!(NumberingResolver::format_chosung(1), "ㄱ");
+        assert_eq!(NumberingResolver::format_chosung(2), "ㄴ");
+    }
+
+    #[test]
+    fn test_format_geonodeo() {
+        assert_eq!(NumberingResolver::format_geonodeo(1), "거");
+        assert_eq!(NumberingResolver::format_geonodeo(2), "너");
+    }
+
+    // --- Circle number tests ---
+
+    #[test]
+    fn test_format_circle_1() {
+        assert_eq!(NumberingResolver::format_circle_number(1), "①");
+    }
+
+    #[test]
+    fn test_format_circle_20() {
+        assert_eq!(NumberingResolver::format_circle_number(20), "⑳");
+    }
+
+    #[test]
+    fn test_format_circle_21() {
+        // U+3251 = ㉑
+        assert_eq!(NumberingResolver::format_circle_number(21), "㉑");
+    }
+
+    #[test]
+    fn test_format_circle_overflow() {
+        assert_eq!(NumberingResolver::format_circle_number(51), "51");
+    }
+
+    // --- Existing integration tests ---
 
     #[test]
     fn test_lvl_override_style_change() {
@@ -440,5 +621,65 @@ mod tests {
         // numId 2, defaults to decimal, but overridden to upperLetter
         let marker = resolver.next_marker(2, 0);
         assert_eq!(marker, "A)");
+    }
+
+    #[test]
+    fn test_bullet_unicode_characters_normalized_to_dash() {
+        // When lvlText contains Unicode bullets like \u{2022} or \u{25E6}, they should become "-"
+        let abstract_num = AbstractNum {
+            abstract_num_id: Some(1),
+            levels: vec![
+                Level {
+                    i_level: Some(0),
+                    start: Some(LevelStart { value: Some(1) }),
+                    number_format: Some(NumFmt {
+                        value: Cow::Borrowed("bullet"),
+                    }),
+                    level_text: Some(LevelText {
+                        value: Some(Cow::Borrowed("\u{2022}")),
+                    }),
+                    ..Default::default()
+                },
+                Level {
+                    i_level: Some(1),
+                    start: Some(LevelStart { value: Some(1) }),
+                    number_format: Some(NumFmt {
+                        value: Cow::Borrowed("bullet"),
+                    }),
+                    level_text: Some(LevelText {
+                        value: Some(Cow::Borrowed("\u{25E6}")),
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let num = Num {
+            num_id: Some(2),
+            abstract_num_id: Some(AbstractNumId { value: Some(1) }),
+            ..Default::default()
+        };
+        let docx = Docx {
+            numbering: Some(Numbering {
+                abstract_numberings: vec![abstract_num],
+                numberings: vec![num],
+            }),
+            ..Default::default()
+        };
+        let mut resolver = NumberingResolver::new(&docx);
+
+        let m0 = resolver.next_marker(2, 0);
+        let m1 = resolver.next_marker(2, 1);
+
+        assert_eq!(
+            m0, "-",
+            "Unicode bullet \u{2022} should be normalized to -, got: {}",
+            m0
+        );
+        assert_eq!(
+            m1, "-",
+            "Unicode bullet \u{25E6} should be normalized to -, got: {}",
+            m1
+        );
     }
 }

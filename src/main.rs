@@ -5,19 +5,34 @@ use undocx::{ConvertOptions, DocxToMarkdown, ImageHandling};
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(
+    author,
+    version,
+    about = "Convert DOCX files to Markdown",
+    long_about = "undocx converts Microsoft Word (.docx) files to clean Markdown.\n\n\
+        Supports headings, lists (decimal/letter/roman/Korean), tables with \
+        cell merges, footnotes, endnotes, comments, track changes, images, \
+        hyperlinks, bookmarks, and more.\n\n\
+        Images are embedded as base64 by default. Use --images-dir to extract \
+        them to a directory, or --skip-images to omit them entirely.",
+    after_help = "EXAMPLES:\n  \
+        undocx report.docx                        Print Markdown to stdout\n  \
+        undocx report.docx output.md              Write to file\n  \
+        undocx report.docx out.md --images-dir img  Extract images to ./img/\n  \
+        undocx report.docx --skip-images          Omit all images"
+)]
 struct Args {
-    /// Input DOCX file path
+    /// Input .docx file
     input: PathBuf,
 
-    /// Output Markdown file path (optional, prints to stdout if not specified)
+    /// Output .md file (prints to stdout if omitted)
     output: Option<PathBuf>,
 
-    /// Directory to extract images to (if not set, images are embedded/inline)
-    #[arg(long)]
+    /// Save images to this directory instead of embedding as base64
+    #[arg(long, value_name = "DIR")]
     images_dir: Option<PathBuf>,
 
-    /// Skip extracting images
+    /// Omit images from the output entirely
     #[arg(long)]
     skip_images: bool,
 }

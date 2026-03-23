@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "undocx"
-version = "0.3.14"
+version = "0.4.0"
 description = "DOCX to Markdown converter written in Rust"
 readme = "README.md"
 license = { text = "MIT" }

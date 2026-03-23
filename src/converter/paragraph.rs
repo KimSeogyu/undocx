@@ -20,7 +20,32 @@ struct FormattedSegment {
     has_strike: bool,
     is_insertion: bool,
     is_deletion: bool,
+    is_superscript: bool,
+    is_subscript: bool,
+    is_code: bool,
     anchor: Option<String>,
+}
+
+/// Returns true if the given font family name is a monospace font.
+fn is_monospace_font(fonts: &rs_docx::formatting::Fonts) -> bool {
+    let check = |name: &Option<String>| -> bool {
+        name.as_ref()
+            .map(|n| {
+                let lower = n.to_lowercase();
+                lower.contains("courier")
+                    || lower.contains("consolas")
+                    || lower.contains("mono")
+                    || lower.contains("source code")
+                    || lower.contains("fira code")
+                    || lower.contains("menlo")
+                    || lower.contains("dejavu sans mono")
+                    || lower.contains("liberation mono")
+                    || lower.contains("andale mono")
+                    || lower.contains("lucida console")
+            })
+            .unwrap_or(false)
+    };
+    check(&fonts.ascii) || check(&fonts.h_ansi)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,6 +122,18 @@ impl ParagraphConverter {
             } else {
                 looking_for_anchors = false;
                 content_segments.push(seg);
+            }
+        }
+
+        // If this is a heading paragraph, strip bold from segments (headings are inherently bold)
+        let is_heading_para = para.property.as_ref()
+            .and_then(|p| p.style_id.as_ref())
+            .and_then(|s| crate::localization::parse_heading_style(&s.value))
+            .is_some();
+
+        if is_heading_para {
+            for seg in &mut content_segments {
+                seg.is_bold = false;
             }
         }
 
@@ -364,6 +401,24 @@ impl ParagraphConverter {
             .as_ref()
             .map(|s| s.value.unwrap_or(true))
             .unwrap_or(false);
+        let is_superscript = props
+            .vertical_align
+            .as_ref()
+            .and_then(|v| v.value.as_ref())
+            .map(|v| matches!(v, rs_docx::formatting::VertAlignType::Superscript))
+            .unwrap_or(false);
+        let is_subscript = props
+            .vertical_align
+            .as_ref()
+            .and_then(|v| v.value.as_ref())
+            .map(|v| matches!(v, rs_docx::formatting::VertAlignType::Subscript))
+            .unwrap_or(false);
+        let is_code = !context.is_in_table_cell()
+            && props
+                .fonts
+                .as_ref()
+                .map(is_monospace_font)
+                .unwrap_or(false);
 
         let delimiter = "\n\n---\n\n";
         let parts: Vec<&str> = text.split(delimiter).collect();
@@ -380,6 +435,9 @@ impl ParagraphConverter {
                     has_strike: false,
                     is_insertion: false,
                     is_deletion: false,
+                    is_superscript: false,
+                    is_subscript: false,
+                    is_code: false,
                     anchor: None,
                 });
             }
@@ -392,6 +450,9 @@ impl ParagraphConverter {
                     has_strike,
                     is_insertion: false,
                     is_deletion: false,
+                    is_superscript,
+                    is_subscript,
+                    is_code,
                     anchor: None,
                 });
             }
@@ -413,6 +474,9 @@ impl ParagraphConverter {
                     && last.has_strike == seg.has_strike
                     && last.is_insertion == seg.is_insertion
                     && last.is_deletion == seg.is_deletion
+                    && last.is_superscript == seg.is_superscript
+                    && last.is_subscript == seg.is_subscript
+                    && last.is_code == seg.is_code
                     && last.anchor == seg.anchor
                 {
                     // Merge text
@@ -507,10 +571,27 @@ impl ParagraphConverter {
         for seg in segments {
             // Render anchor if present
             if let Some(anchor) = &seg.anchor {
-                result.push_str(&format!("<a id=\"{}\"></a>", anchor));
+                result.push_str(&format!(
+                    "<a id=\"{}\"></a>",
+                    escape_html_attr(anchor)
+                ));
             }
 
             let mut text = seg.text.clone();
+
+            // Monospace font → inline code (takes priority over other formatting)
+            if seg.is_code {
+                result.push_str(&format!("`{}`", text));
+                continue;
+            }
+
+            // Apply superscript/subscript first (innermost wrapping)
+            if seg.is_superscript {
+                text = format!("<sup>{}</sup>", text);
+            }
+            if seg.is_subscript {
+                text = format!("<sub>{}</sub>", text);
+            }
 
             // Apply track changes formatting first
             if seg.is_deletion {
@@ -578,6 +659,13 @@ impl ParagraphConverter {
                 prefix.push_str(&"#".repeat(heading_level));
                 prefix.push(' ');
                 is_heading = true;
+            } else if crate::localization::is_blockquote_style(&style.value) {
+                let text_for_output = if context.preserve_whitespace() {
+                    text.as_str()
+                } else {
+                    text.trim()
+                };
+                return Ok(format!("> {}", text_for_output));
             }
         }
 
@@ -1199,5 +1287,1074 @@ mod tests {
 
         let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
         assert_eq!(md, "A\u{2011}B\u{00AD}C\u{2013}\t\n\n---\n\n{PAGE}D");
+    }
+
+    #[test]
+    fn test_inline_anchor_escapes_html_special_chars() {
+        use rs_docx::document::BookmarkStart;
+
+        // Bookmark with HTML-special characters appears AFTER text (inline, not leading)
+        let mut para = Paragraph::default();
+
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "Before".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        // This bookmark has characters that must be escaped in HTML attributes
+        let bookmark = BookmarkStart {
+            name: Some(Cow::Borrowed("x\"onmouseover=\"alert(1)")),
+            ..Default::default()
+        };
+        para.content.push(ParagraphContent::BookmarkStart(bookmark));
+
+        let mut run2 = Run::default();
+        run2.content.push(RunContent::Text(Text {
+            text: "After".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run2));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+
+        let mut context = super::ConversionContext::new(
+            &rels,
+            &mut numbering_resolver,
+            &mut image_extractor,
+            &options,
+            None,
+            None,
+            None,
+            &style_resolver,
+        );
+
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        // The inline anchor MUST escape the quote to prevent HTML injection
+        assert!(
+            md.contains("&quot;"),
+            "Inline anchor must escape HTML special chars, got: {}",
+            md
+        );
+        assert!(
+            !md.contains("x\"onmouseover"),
+            "Raw unescaped quote found in anchor — XSS vulnerability"
+        );
+    }
+
+    #[test]
+    fn test_hyperlink_italic_matches_paragraph_italic() {
+        use rs_docx::formatting::{CharacterProperty, Italics};
+
+        // Create a paragraph with:
+        // 1. An italic run (regular text)
+        // 2. A hyperlink containing an italic run
+        let mut para = Paragraph::default();
+
+        // Regular italic run
+        let mut italic_run = Run {
+            property: Some(CharacterProperty {
+                italics: Some(Italics { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        italic_run.content.push(RunContent::Text(Text {
+            text: "regular".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(italic_run));
+
+        // Hyperlink with italic run
+        let mut link_run = Run {
+            property: Some(CharacterProperty {
+                italics: Some(Italics { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        link_run.content.push(RunContent::Text(Text {
+            text: "linked".into(),
+            ..Default::default()
+        }));
+        let hyperlink = Hyperlink {
+            anchor: Some(Cow::Borrowed("target")),
+            content: vec![link_run],
+            ..Default::default()
+        };
+        para.content.push(ParagraphContent::Link(hyperlink));
+
+        // Setup context
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+
+        let mut context = super::ConversionContext::new(
+            &rels,
+            &mut numbering_resolver,
+            &mut image_extractor,
+            &options,
+            None,
+            None,
+            None,
+            &style_resolver,
+        );
+
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+
+        // Both italic texts must use the same <em> format
+        assert!(
+            md.contains("<em>regular</em>"),
+            "Regular italic should use <em>, got: {}",
+            md
+        );
+        assert!(
+            md.contains("<em>linked</em>"),
+            "Hyperlink italic should use <em>, got: {}",
+            md
+        );
+    }
+
+    // ---- Character formatting tests (Tier 2) ----
+
+    #[test]
+    fn test_bold_text() {
+        use rs_docx::formatting::{Bold, CharacterProperty};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                bold: Some(Bold { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("<strong>hello</strong>"), "Expected bold, got: {}", md);
+    }
+
+    #[test]
+    fn test_italic_text() {
+        use rs_docx::formatting::{CharacterProperty, Italics};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                italics: Some(Italics { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("<em>hello</em>"), "Expected italic, got: {}", md);
+    }
+
+    #[test]
+    fn test_bold_italic_text() {
+        use rs_docx::formatting::{Bold, CharacterProperty, Italics};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                bold: Some(Bold { value: Some(true) }),
+                italics: Some(Italics { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(
+            md.contains("<strong><em>hello</em></strong>"),
+            "Expected bold+italic, got: {}",
+            md
+        );
+    }
+
+    #[test]
+    fn test_underline_text() {
+        use rs_docx::formatting::{CharacterProperty, Underline};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                underline: Some(Underline::default()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("<u>hello</u>"), "Expected underline, got: {}", md);
+    }
+
+    #[test]
+    fn test_strikethrough_text_markdown() {
+        use rs_docx::formatting::{CharacterProperty, Strike};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                strike: Some(Strike { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("~~hello~~"), "Expected markdown strike, got: {}", md);
+    }
+
+    #[test]
+    fn test_strikethrough_text_html() {
+        use rs_docx::formatting::{CharacterProperty, Strike};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                strike: Some(Strike { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions {
+            html_strikethrough: true,
+            ..Default::default()
+        };
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("<s>hello</s>"), "Expected HTML strike, got: {}", md);
+    }
+
+    #[test]
+    fn test_bold_and_underline_combined() {
+        use rs_docx::formatting::{Bold, CharacterProperty, Underline};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                bold: Some(Bold { value: Some(true) }),
+                underline: Some(Underline::default()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("<strong>"), "Expected bold tag, got: {}", md);
+        assert!(md.contains("<u>hello</u>"), "Expected underline, got: {}", md);
+    }
+
+    #[test]
+    fn test_plain_text_no_formatting() {
+        let mut para = Paragraph::default();
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert_eq!(md, "hello");
+    }
+
+    #[test]
+    fn test_empty_run_produces_empty() {
+        let mut para = Paragraph::default();
+        let run = Run::default();
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert_eq!(md, "");
+    }
+
+    #[test]
+    fn test_whitespace_preserved_outside_markers() {
+        use rs_docx::formatting::{Bold, CharacterProperty};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                bold: Some(Bold { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: " hello ".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        let docx = rs_docx::Docx::default();
+        let rels = HashMap::new();
+        let mut numbering_resolver = super::super::NumberingResolver::new(&docx);
+        let mut image_extractor = super::super::ImageExtractor::new_skip();
+        let options = crate::ConvertOptions::default();
+        let style_resolver = super::super::StyleResolver::new(&docx.styles);
+        let mut context = super::ConversionContext::new(
+            &rels, &mut numbering_resolver, &mut image_extractor,
+            &options, None, None, None, &style_resolver,
+        );
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        // segments_to_markdown wraps full segment text (including spaces) in <strong>;
+        // ParagraphConverter::convert then trims the outer result.
+        assert!(
+            md.contains("<strong>") && md.contains("hello") && md.contains("</strong>"),
+            "Expected bold wrapping around text, got: {}",
+            md
+        );
+    }
+
+    // ---- apply_format_safely direct tests (Tier 1) ----
+
+    #[test]
+    fn test_format_safely_empty_string() {
+        let result = ParagraphConverter::apply_format_safely("", "<strong>", "</strong>");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn test_format_safely_whitespace_only() {
+        let result = ParagraphConverter::apply_format_safely("   ", "<em>", "</em>");
+        assert_eq!(result, "   ");
+    }
+
+    #[test]
+    fn test_format_safely_single_line() {
+        let result = ParagraphConverter::apply_format_safely("hello", "<strong>", "</strong>");
+        assert_eq!(result, "<strong>hello</strong>");
+    }
+
+    #[test]
+    fn test_format_safely_with_outer_spaces() {
+        let result = ParagraphConverter::apply_format_safely(" hello ", "<strong>", "</strong>");
+        assert_eq!(result, " <strong>hello</strong> ");
+    }
+
+    #[test]
+    fn test_format_safely_multiline() {
+        let result = ParagraphConverter::apply_format_safely("line1\nline2", "~~", "~~");
+        assert!(
+            result.contains("~~line1~~"),
+            "line1 should be wrapped, got: {}",
+            result
+        );
+        assert!(
+            result.contains("~~line2~~"),
+            "line2 should be wrapped, got: {}",
+            result
+        );
+    }
+
+    // ---- Step 6: Heading + alignment tests ----
+
+    #[test]
+    fn test_heading1() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            style_id: Some(rs_docx::formatting::ParagraphStyleId {
+                value: "Heading1".into(),
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "Title".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.starts_with("# "), "Expected '# ' prefix, got: {}", md);
+        assert!(md.contains("Title"), "Expected 'Title', got: {}", md);
+    }
+
+    #[test]
+    fn test_heading2() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            style_id: Some(rs_docx::formatting::ParagraphStyleId {
+                value: "Heading2".into(),
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "Section".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("## Section"), "Expected '## Section', got: {}", md);
+    }
+
+    #[test]
+    fn test_heading3() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            style_id: Some(rs_docx::formatting::ParagraphStyleId {
+                value: "Heading 3".into(),
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "Sub".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("### Sub"), "Expected '### Sub', got: {}", md);
+    }
+
+    #[test]
+    fn test_heading6() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            style_id: Some(rs_docx::formatting::ParagraphStyleId {
+                value: "Heading6".into(),
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "Deep".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("###### Deep"), "Expected '###### Deep', got: {}", md);
+    }
+
+    #[test]
+    fn test_title_style() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            style_id: Some(rs_docx::formatting::ParagraphStyleId {
+                value: "Title".into(),
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "Doc".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("# Doc"), "Expected '# Doc', got: {}", md);
+    }
+
+    #[test]
+    fn test_subtitle_style() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            style_id: Some(rs_docx::formatting::ParagraphStyleId {
+                value: "Subtitle".into(),
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "Sub".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("## Sub"), "Expected '## Sub', got: {}", md);
+    }
+
+    #[test]
+    fn test_heading_empty_text_produces_empty() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            style_id: Some(rs_docx::formatting::ParagraphStyleId {
+                value: "Heading1".into(),
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        // Empty run — no text content
+        para.content.push(ParagraphContent::Run(Run::default()));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert_eq!(md, "");
+    }
+
+    #[test]
+    fn test_center_alignment() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            justification: Some(rs_docx::formatting::Justification {
+                value: rs_docx::formatting::JustificationVal::Center,
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "centered".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("text-align: center"), "Expected center alignment, got: {}", md);
+        assert!(md.contains("centered"), "Expected text, got: {}", md);
+    }
+
+    #[test]
+    fn test_right_alignment() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            justification: Some(rs_docx::formatting::Justification {
+                value: rs_docx::formatting::JustificationVal::Right,
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "right".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("text-align: right"), "Expected right alignment, got: {}", md);
+        assert!(md.contains("right"), "Expected text, got: {}", md);
+    }
+
+    #[test]
+    fn test_heading_ignores_alignment() {
+        let mut para = Paragraph::default();
+        let props = rs_docx::formatting::ParagraphProperty {
+            style_id: Some(rs_docx::formatting::ParagraphStyleId {
+                value: "Heading1".into(),
+            }),
+            justification: Some(rs_docx::formatting::Justification {
+                value: rs_docx::formatting::JustificationVal::Center,
+            }),
+            ..Default::default()
+        };
+        para.property = Some(props);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "Title".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("# "), "Expected heading prefix, got: {}", md);
+        assert!(!md.contains("text-align"), "Heading should not have alignment, got: {}", md);
+    }
+
+    // ---- Step 7: Track changes, breaks, special elements ----
+
+    #[test]
+    fn test_insertion_produces_ins_tag() {
+        use rs_docx::document::Insertion;
+
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "added".into(),
+            ..Default::default()
+        }));
+        let ins = Insertion {
+            runs: vec![run],
+            ..Default::default()
+        };
+        let mut para = Paragraph::default();
+        para.content.push(ParagraphContent::Insertion(ins));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("<ins>added</ins>"), "Expected <ins> tag, got: {}", md);
+    }
+
+    #[test]
+    fn test_deletion_produces_strikethrough() {
+        use rs_docx::document::{DelText, Deletion};
+
+        let mut del_run = Run::default();
+        del_run.content.push(RunContent::DelText(DelText {
+            text: "removed".into(),
+            ..Default::default()
+        }));
+        let del = Deletion {
+            runs: vec![del_run],
+            ..Default::default()
+        };
+        let mut para = Paragraph::default();
+        para.content.push(ParagraphContent::Deletion(del));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("~~removed~~"), "Expected strikethrough, got: {}", md);
+    }
+
+    #[test]
+    fn test_page_break_in_run() {
+        use hard_xml::XmlRead;
+
+        let mut para = Paragraph::default();
+        let run = Run::from_str(
+            r#"<w:r><w:t>before</w:t><w:br w:type="page"/><w:t>after</w:t></w:r>"#,
+        )
+        .expect("Failed to parse run XML");
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("---"), "Expected page break '---', got: {}", md);
+    }
+
+    #[test]
+    fn test_line_break_in_run() {
+        use hard_xml::XmlRead;
+
+        let mut para = Paragraph::default();
+        let run = Run::from_str(r#"<w:r><w:t>before</w:t><w:br/><w:t>after</w:t></w:r>"#)
+            .expect("Failed to parse run XML");
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains('\n'), "Expected line break, got: {:?}", md);
+    }
+
+    #[test]
+    fn test_tab_in_run() {
+        use hard_xml::XmlRead;
+
+        let mut para = Paragraph::default();
+        let run = Run::from_str(r#"<w:r><w:t>col1</w:t><w:tab/><w:t>col2</w:t></w:r>"#)
+            .expect("Failed to parse run XML");
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains('\t'), "Expected tab, got: {:?}", md);
+    }
+
+    #[test]
+    fn test_hyperlink_external() {
+        let mut rels = HashMap::new();
+        rels.insert("rId1".to_string(), "https://example.com".to_string());
+
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "click".into(),
+            ..Default::default()
+        }));
+        let hyperlink = Hyperlink {
+            id: Some(Cow::Borrowed("rId1")),
+            content: vec![run],
+            ..Default::default()
+        };
+        let mut para = Paragraph::default();
+        para.content.push(ParagraphContent::Link(hyperlink));
+
+        make_test_context_ext!(ctx, rels: rels);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(
+            md.contains("[click](https://example.com)"),
+            "Expected external link, got: {}",
+            md
+        );
+    }
+
+    #[test]
+    fn test_hyperlink_anchor() {
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "go".into(),
+            ..Default::default()
+        }));
+        let hyperlink = Hyperlink {
+            anchor: Some(Cow::Borrowed("_Heading")),
+            content: vec![run],
+            ..Default::default()
+        };
+        let mut para = Paragraph::default();
+        para.content.push(ParagraphContent::Link(hyperlink));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("[go](#_Heading)"), "Expected anchor link, got: {}", md);
+    }
+
+    #[test]
+    fn test_hyperlink_empty_text() {
+        let hyperlink = Hyperlink {
+            anchor: Some(Cow::Borrowed("ref")),
+            ..Default::default()
+        };
+        let mut para = Paragraph::default();
+        para.content.push(ParagraphContent::Link(hyperlink));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains("#ref"), "Expected anchor reference, got: {}", md);
+    }
+
+    #[test]
+    fn test_empty_paragraph_produces_empty() {
+        let para = Paragraph::default();
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert_eq!(md, "");
+    }
+
+    #[test]
+    fn test_sym_element_hex_decode() {
+        use hard_xml::XmlRead;
+
+        let mut para = Paragraph::default();
+        let run = Run::from_str(r#"<w:r><w:sym w:char="2022"/></w:r>"#)
+            .expect("Failed to parse run XML");
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains('\u{2022}'), "Expected bullet •, got: {:?}", md);
+    }
+
+    #[test]
+    fn test_non_breaking_hyphen() {
+        use hard_xml::XmlRead;
+
+        let mut para = Paragraph::default();
+        let run = Run::from_str(r#"<w:r><w:noBreakHyphen/></w:r>"#)
+            .expect("Failed to parse run XML");
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(ctx);
+        let md = ParagraphConverter::convert(&para, &mut ctx).expect("Conversion failed");
+        assert!(md.contains('\u{2011}'), "Expected non-breaking hyphen, got: {:?}", md);
+    }
+
+    #[test]
+    fn test_heading_strips_bold_formatting() {
+        use rs_docx::formatting::{Bold, CharacterProperty, ParagraphProperty, ParagraphStyleId};
+
+        let mut para = Paragraph {
+            property: Some(ParagraphProperty {
+                style_id: Some(ParagraphStyleId { value: "Heading1".into() }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                bold: Some(Bold { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "My Title".into(),
+            ..Default::default()
+        }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(context);
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+
+        // Heading text should NOT have <strong> wrapping
+        assert!(
+            !md.contains("<strong>"),
+            "Heading should not contain <strong> tags, got: {}",
+            md
+        );
+        assert!(md.contains("# My Title"), "Expected '# My Title', got: {}", md);
+    }
+
+    #[test]
+    fn test_superscript_text() {
+        use rs_docx::formatting::{CharacterProperty, VertAlign, VertAlignType};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                vertical_align: Some(VertAlign { value: Some(VertAlignType::Superscript) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text { text: "2".into(), ..Default::default() }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(context);
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("<sup>2</sup>"), "Expected <sup>2</sup>, got: {}", md);
+    }
+
+    #[test]
+    fn test_subscript_text() {
+        use rs_docx::formatting::{CharacterProperty, VertAlign, VertAlignType};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                vertical_align: Some(VertAlign { value: Some(VertAlignType::Subscript) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text { text: "2".into(), ..Default::default() }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(context);
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("<sub>2</sub>"), "Expected <sub>2</sub>, got: {}", md);
+    }
+
+    #[test]
+    fn test_quote_style_produces_blockquote() {
+        use rs_docx::formatting::{ParagraphProperty, ParagraphStyleId};
+
+        let mut para = Paragraph {
+            property: Some(ParagraphProperty {
+                style_id: Some(ParagraphStyleId { value: "Quote".into() }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text { text: "A wise quote".into(), ..Default::default() }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(context);
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.starts_with("> "), "Quote style should produce blockquote, got: {}", md);
+        assert!(md.contains("A wise quote"), "Quote text missing, got: {}", md);
+    }
+
+    #[test]
+    fn test_intense_quote_style_produces_blockquote() {
+        use rs_docx::formatting::{ParagraphProperty, ParagraphStyleId};
+
+        let mut para = Paragraph {
+            property: Some(ParagraphProperty {
+                style_id: Some(ParagraphStyleId { value: "IntenseQuote".into() }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text { text: "Intense".into(), ..Default::default() }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(context);
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.starts_with("> "), "IntenseQuote should produce blockquote, got: {}", md);
+    }
+
+    #[test]
+    fn test_monospace_font_produces_inline_code() {
+        use rs_docx::formatting::{CharacterProperty, Fonts};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                fonts: Some(Fonts {
+                    ascii: Some("Courier New".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text { text: "let x = 1;".into(), ..Default::default() }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(context);
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("`let x = 1;`"), "Monospace should produce inline code, got: {}", md);
+    }
+
+    #[test]
+    fn test_consolas_font_produces_inline_code() {
+        use rs_docx::formatting::{CharacterProperty, Fonts};
+
+        let mut para = Paragraph::default();
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                fonts: Some(Fonts {
+                    ascii: Some("Consolas".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text { text: "code".into(), ..Default::default() }));
+        para.content.push(ParagraphContent::Run(run));
+
+        make_test_context!(context);
+        let md = ParagraphConverter::convert(&para, &mut context).expect("Conversion failed");
+        assert!(md.contains("`code`"), "Consolas should produce inline code, got: {}", md);
     }
 }

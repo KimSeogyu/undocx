@@ -19,6 +19,7 @@ impl TableConverter {
         cell: &TableCell<'a>,
         context: &mut ConversionContext<'a>,
     ) -> Result<String> {
+        context.set_in_table_cell(true);
         let mut content = String::new();
         for item in &cell.content {
             match item {
@@ -37,6 +38,7 @@ impl TableConverter {
                 }
             }
         }
+        context.set_in_table_cell(false);
         Ok(content)
     }
 }
@@ -125,5 +127,122 @@ mod tests {
 
         let html = TableConverter::convert(&table, &mut context).expect("table conversion failed");
         assert!(html.contains("<td>SDT-CELL</td>"));
+    }
+
+    #[test]
+    fn test_simple_2x2_table() {
+        make_test_context!(ctx);
+        let table = Table::default()
+            .push_row(
+                TableRow::default()
+                    .push_cell(TableCell::paragraph(Paragraph::default().push_text("A")))
+                    .push_cell(TableCell::paragraph(Paragraph::default().push_text("B"))),
+            )
+            .push_row(
+                TableRow::default()
+                    .push_cell(TableCell::paragraph(Paragraph::default().push_text("C")))
+                    .push_cell(TableCell::paragraph(Paragraph::default().push_text("D"))),
+            );
+        let html = TableConverter::convert(&table, &mut ctx).expect("table conversion failed");
+        assert!(html.contains("<table>"));
+        assert!(html.contains("<td>A</td>"));
+        assert!(html.contains("<td>B</td>"));
+        assert!(html.contains("<td>C</td>"));
+        assert!(html.contains("<td>D</td>"));
+        assert_eq!(html.matches("<tr>").count(), 2);
+    }
+
+    #[test]
+    fn test_table_with_horizontal_merge() {
+        make_test_context!(ctx);
+        let merged_cell =
+            TableCell::paragraph(Paragraph::default().push_text("WIDE")).property(
+                TableCellProperty::default().grid_span(GridSpan { val: 2 }),
+            );
+        let table = Table::default().push_row(TableRow::default().push_cell(merged_cell));
+        let html = TableConverter::convert(&table, &mut ctx).expect("table conversion failed");
+        assert!(html.contains("colspan=\"2\""));
+    }
+
+    #[test]
+    fn test_table_cell_with_line_break() {
+        make_test_context!(ctx);
+        let mut cell = TableCell::default();
+        cell.content.push(TableCellContent::Paragraph(
+            Paragraph::default().push_text("Line1"),
+        ));
+        cell.content.push(TableCellContent::Paragraph(
+            Paragraph::default().push_text("Line2"),
+        ));
+        let table = Table::default().push_row(TableRow::default().push_cell(cell));
+        let html = TableConverter::convert(&table, &mut ctx).expect("table conversion failed");
+        assert!(html.contains("<br/>"));
+    }
+
+    #[test]
+    fn test_table_with_empty_cell() {
+        make_test_context!(ctx);
+        let table = Table::default().push_row(
+            TableRow::default()
+                .push_cell(TableCell::paragraph(
+                    Paragraph::default().push_text("Content"),
+                ))
+                .push_cell(TableCell::paragraph(Paragraph::default())),
+        );
+        let html = TableConverter::convert(&table, &mut ctx).expect("table conversion failed");
+        assert!(html.contains("<td>Content</td>"));
+        assert!(html.contains("<td></td>"));
+    }
+
+    #[test]
+    fn test_nested_table() {
+        make_test_context!(ctx);
+        let inner_table = Table::default().push_row(
+            TableRow::default()
+                .push_cell(TableCell::paragraph(Paragraph::default().push_text("Inner"))),
+        );
+        let mut outer_cell = TableCell::default();
+        outer_cell
+            .content
+            .push(TableCellContent::Table(inner_table));
+        let outer =
+            Table::default().push_row(TableRow::default().push_cell(outer_cell));
+        let html = TableConverter::convert(&outer, &mut ctx).expect("table conversion failed");
+        assert_eq!(html.matches("<table>").count(), 2);
+    }
+
+    #[test]
+    fn test_table_cell_monospace_not_wrapped_in_backticks() {
+        use rs_docx::formatting::{CharacterProperty, Fonts};
+
+        let mut mono_run = rs_docx::document::Run {
+            property: Some(CharacterProperty {
+                fonts: Some(Fonts::default().ascii("Consolas").h_ansi("Consolas")),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        mono_run.content.push(rs_docx::document::RunContent::Text(rs_docx::document::Text {
+            text: "undocx (Rust)".into(),
+            ..Default::default()
+        }));
+        let cell = TableCell::paragraph(Paragraph::default().push(mono_run));
+        let table = Table::default()
+            .push_row(TableRow::default().push_cell(cell));
+
+        make_test_context!(ctx);
+        let html = TableConverter::convert(&table, &mut ctx).expect("table conversion failed");
+
+        // Monospace font in table cells should NOT produce backtick wrapping
+        assert!(
+            !html.contains("`undocx (Rust)`"),
+            "Table cell monospace text should not be inline code, got: {}",
+            html
+        );
+        assert!(
+            html.contains("undocx (Rust)"),
+            "Cell text should be present, got: {}",
+            html
+        );
     }
 }

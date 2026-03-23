@@ -4,6 +4,28 @@ use super::ConversionContext;
 use crate::Result;
 use rs_docx::document::{BreakType, Run, RunContent};
 
+/// Returns true if the given Fonts value indicates a monospace font family.
+fn is_monospace_font(fonts: &rs_docx::formatting::Fonts) -> bool {
+    let check = |name: &Option<String>| -> bool {
+        name.as_ref()
+            .map(|n| {
+                let lower = n.to_lowercase();
+                lower.contains("courier")
+                    || lower.contains("consolas")
+                    || lower.contains("mono")
+                    || lower.contains("source code")
+                    || lower.contains("fira code")
+                    || lower.contains("menlo")
+                    || lower.contains("dejavu sans mono")
+                    || lower.contains("liberation mono")
+                    || lower.contains("andale mono")
+                    || lower.contains("lucida console")
+            })
+            .unwrap_or(false)
+    };
+    check(&fonts.ascii) || check(&fonts.h_ansi)
+}
+
 /// Converter for Run elements.
 pub struct RunConverter;
 
@@ -133,6 +155,12 @@ impl RunConverter {
     ) -> String {
         let mut result = text.to_string();
 
+        // Check for monospace font → inline code (takes priority)
+        let is_code = props.fonts.as_ref().map(is_monospace_font).unwrap_or(false);
+        if is_code {
+            return format!("`{}`", result);
+        }
+
         // Check for bold
         let is_bold = props
             .bold
@@ -171,13 +199,154 @@ impl RunConverter {
         }
 
         if is_bold && is_italic {
-            result = format!("<strong>*{}*</strong>", result);
+            result = format!("<strong><em>{}</em></strong>", result);
         } else if is_bold {
             result = format!("<strong>{}</strong>", result);
         } else if is_italic {
-            result = format!("*{}*", result);
+            result = format!("<em>{}</em>", result);
+        }
+
+        let is_superscript = props
+            .vertical_align
+            .as_ref()
+            .and_then(|v| v.value.as_ref())
+            .map(|v| matches!(v, rs_docx::formatting::VertAlignType::Superscript))
+            .unwrap_or(false);
+        let is_subscript = props
+            .vertical_align
+            .as_ref()
+            .and_then(|v| v.value.as_ref())
+            .map(|v| matches!(v, rs_docx::formatting::VertAlignType::Subscript))
+            .unwrap_or(false);
+
+        if is_superscript {
+            result = format!("<sup>{}</sup>", result);
+        }
+        if is_subscript {
+            result = format!("<sub>{}</sub>", result);
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hard_xml::XmlRead;
+    use rs_docx::document::{Run, RunContent, Text};
+    use rs_docx::formatting::{Bold, CharacterProperty, Italics};
+
+    #[test]
+    fn test_plain_text_run() {
+        make_test_context!(ctx);
+        let mut run = Run::default();
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[test]
+    fn test_bold_run() {
+        make_test_context!(ctx);
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                bold: Some(Bold { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert_eq!(result, "<strong>hello</strong>");
+    }
+
+    #[test]
+    fn test_italic_run() {
+        make_test_context!(ctx);
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                italics: Some(Italics { value: Some(true) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text {
+            text: "hello".into(),
+            ..Default::default()
+        }));
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert_eq!(result, "<em>hello</em>");
+    }
+
+    #[test]
+    fn test_superscript_run() {
+        use rs_docx::formatting::{CharacterProperty, VertAlign, VertAlignType};
+
+        make_test_context!(ctx);
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                vertical_align: Some(VertAlign { value: Some(VertAlignType::Superscript) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text { text: "n".into(), ..Default::default() }));
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert_eq!(result, "<sup>n</sup>");
+    }
+
+    #[test]
+    fn test_subscript_run() {
+        use rs_docx::formatting::{CharacterProperty, VertAlign, VertAlignType};
+
+        make_test_context!(ctx);
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                vertical_align: Some(VertAlign { value: Some(VertAlignType::Subscript) }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text { text: "2".into(), ..Default::default() }));
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert_eq!(result, "<sub>2</sub>");
+    }
+
+    #[test]
+    fn test_monospace_font_run_produces_code() {
+        use rs_docx::formatting::{CharacterProperty, Fonts};
+
+        make_test_context!(ctx);
+        let mut run = Run {
+            property: Some(CharacterProperty {
+                fonts: Some(Fonts {
+                    ascii: Some("Courier New".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        run.content.push(RunContent::Text(Text { text: "x = 1".into(), ..Default::default() }));
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert_eq!(result, "`x = 1`");
+    }
+
+    #[test]
+    fn test_sym_character() {
+        make_test_context!(ctx);
+        let run = Run::from_str(
+            r#"<w:r xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:sym w:char="2022"/></w:r>"#,
+        )
+        .unwrap();
+        let result = RunConverter::convert(&run, &mut ctx, None).unwrap();
+        assert!(result.contains('\u{2022}'));
     }
 }

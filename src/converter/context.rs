@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 /// Context passed through conversion for shared mutable state.
 pub struct ConversionContext<'a> {
     rels: &'a HashMap<String, String>,
-    numbering: &'a mut NumberingResolver<'a>,
+    numbering: &'a mut NumberingResolver,
     image_extractor: &'a mut ImageExtractor,
     options: &'a ConvertOptions,
     style_resolver: &'a StyleResolver<'a>,
@@ -20,13 +20,14 @@ pub struct ConversionContext<'a> {
     seen_comment_ids: HashSet<String>,
     comment_text_by_id: HashMap<String, String>,
     missing_references: Vec<String>,
+    in_table_cell: bool,
 }
 
 impl<'a> ConversionContext<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         rels: &'a HashMap<String, String>,
-        numbering: &'a mut NumberingResolver<'a>,
+        numbering: &'a mut NumberingResolver,
         image_extractor: &'a mut ImageExtractor,
         options: &'a ConvertOptions,
         docx_comments: Option<&'a rs_docx::document::Comments<'a>>,
@@ -114,7 +115,16 @@ impl<'a> ConversionContext<'a> {
             seen_comment_ids: HashSet::new(),
             comment_text_by_id,
             missing_references: Vec::new(),
+            in_table_cell: false,
         }
+    }
+
+    pub fn set_in_table_cell(&mut self, value: bool) {
+        self.in_table_cell = value;
+    }
+
+    pub fn is_in_table_cell(&self) -> bool {
+        self.in_table_cell
     }
 
     pub fn register_comment_reference(&mut self, id: &str) -> String {
