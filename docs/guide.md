@@ -29,9 +29,11 @@ cargo install undocx
 
 ### Quick Conversion
 
-The simplest way to convert a DOCX file:
+The simplest way to convert a DOCX file — one function call:
 
 ```rust
+use undocx;
+
 fn main() -> undocx::Result<()> {
     let md = undocx::convert("report.docx")?;
     println!("{}", md);
@@ -44,6 +46,8 @@ fn main() -> undocx::Result<()> {
 Useful when reading from S3, HTTP responses, or databases:
 
 ```rust
+use undocx;
+
 fn convert_from_s3(bytes: &[u8]) -> undocx::Result<String> {
     undocx::convert_bytes(bytes)
 }
@@ -51,9 +55,10 @@ fn convert_from_s3(bytes: &[u8]) -> undocx::Result<String> {
 
 ### Convert from Reader
 
-Any type implementing `Read + Seek` works:
+Any type implementing `Read + Seek` works — including `File`, `Cursor`, and buffered readers:
 
 ```rust
+use undocx;
 use std::fs::File;
 
 fn main() -> undocx::Result<()> {
@@ -64,69 +69,86 @@ fn main() -> undocx::Result<()> {
 }
 ```
 
-### Builder Pattern
+### Builder Pattern — Image Handling
 
-Configure conversion options with a fluent API:
+Control how images are processed during conversion:
 
 ```rust
-// Skip images for text-only RAG pipelines
-let md = undocx::builder()
-    .skip_images()
-    .convert("report.docx")?;
+use undocx;
+
+fn main() -> undocx::Result<()> {
+    // Skip images entirely — optimal for RAG/LLM text extraction
+    let md = undocx::builder()
+        .skip_images()
+        .convert("report.docx")?;
+
+    // Or save images to a directory, with Markdown references
+    let md = undocx::builder()
+        .save_images_to("./images")
+        .convert("report.docx")?;
+
+    // Or embed as inline base64 (this is the default)
+    let md = undocx::builder()
+        .inline_images()
+        .convert("report.docx")?;
+
+    Ok(())
+}
 ```
 
-```rust
-// Save images to a directory
-let md = undocx::builder()
-    .save_images_to("./images")
-    .convert("report.docx")?;
-```
+### Builder Pattern — Formatting and Validation
+
+Combine multiple options for fine-grained control:
 
 ```rust
-// Strict mode: fail on broken references
-let md = undocx::builder()
-    .skip_images()
-    .strict()
-    .convert("report.docx")?;
-```
+use undocx;
 
-```rust
-// All formatting options
-let md = undocx::builder()
-    .skip_images()
-    .preserve_whitespace()
-    .html_underline(false)
-    .html_strikethrough(true)
-    .strict()
-    .convert("report.docx")?;
+fn main() -> undocx::Result<()> {
+    let md = undocx::builder()
+        .skip_images()                 // omit images
+        .preserve_whitespace()         // keep original spacing
+        .html_underline(false)         // disable <u> tags
+        .html_strikethrough(true)      // use <s> instead of ~~
+        .strict()                      // fail on broken note/comment refs
+        .convert("report.docx")?;
+    println!("{}", md);
+    Ok(())
+}
 ```
 
 ### Reusable Converter
 
-Build once, convert many files:
+Build once, convert many files — avoids re-parsing options each time:
 
 ```rust
-let converter = undocx::Converter::builder()
-    .skip_images()
-    .strict()
-    .build();
+use undocx::Converter;
 
-let md1 = converter.convert("a.docx")?;
-let md2 = converter.convert("b.docx")?;
-let md3 = converter.convert_bytes(&bytes)?;
+fn main() -> undocx::Result<()> {
+    let converter = Converter::builder()
+        .skip_images()
+        .strict()
+        .build();
+
+    // Reuse for multiple files
+    let md1 = converter.convert("quarterly-report.docx")?;
+    let md2 = converter.convert("annual-summary.docx")?;
+
+    // Also works with bytes
+    let bytes = std::fs::read("contract.docx")?;
+    let md3 = converter.convert_bytes(&bytes)?;
+
+    Ok(())
+}
 ```
 
-### Custom Pipeline
+### Custom Pipeline — Custom Renderer
 
-Implement custom extractors or renderers for specialized output:
+Implement `Renderer` to produce any output format (plain text, HTML, JSON):
 
 ```rust
-use undocx::adapters::docx::AstExtractor;
-use undocx::converter::ConversionContext;
 use undocx::core::ast::{BlockNode, DocumentAst};
 use undocx::render::Renderer;
 use undocx::{ConvertOptions, DocxToMarkdown, Result};
-use rs_docx::document::BodyContent;
 
 struct PlainTextRenderer;
 
@@ -135,75 +157,106 @@ impl Renderer for PlainTextRenderer {
         let mut output = String::new();
         for block in &document.blocks {
             match block {
-                BlockNode::Paragraph(text) => {
-                    output.push_str(text);
-                    output.push('\n');
-                }
-                BlockNode::TableHtml(html) => {
-                    output.push_str(html);
-                    output.push('\n');
-                }
-                BlockNode::RawHtml(html) => {
-                    output.push_str(html);
-                    output.push('\n');
-                }
+                BlockNode::Paragraph(text) => output.push_str(text),
+                BlockNode::TableHtml(html) => output.push_str(html),
+                BlockNode::RawHtml(html) => output.push_str(html),
             }
+            output.push('\n');
         }
         Ok(output)
     }
 }
 
-let converter = DocxToMarkdown::with_components(
-    ConvertOptions::default(),
-    undocx::adapters::docx::DocxExtractor,  // default extractor
-    PlainTextRenderer,                       // custom renderer
-);
-let output = converter.convert("report.docx")?;
+fn main() -> Result<()> {
+    use undocx::adapters::docx::DocxExtractor;
+
+    let converter = DocxToMarkdown::with_components(
+        ConvertOptions::default(),
+        DocxExtractor,        // built-in extractor
+        PlainTextRenderer,    // your custom renderer
+    );
+    let output = converter.convert("report.docx")?;
+    println!("{}", output);
+    Ok(())
+}
+```
+
+### Custom Pipeline — Custom Extractor
+
+Implement `AstExtractor` to customize how DOCX elements map to AST nodes:
+
+```rust
+use undocx::adapters::docx::AstExtractor;
+use undocx::converter::ConversionContext;
+use undocx::core::ast::{BlockNode, DocumentAst};
+use undocx::render::MarkdownRenderer;
+use undocx::{ConvertOptions, DocxToMarkdown, Result};
+use rs_docx::document::BodyContent;
+
+struct FilteredExtractor;
+
+impl AstExtractor for FilteredExtractor {
+    fn extract<'a>(
+        &self,
+        body: &[BodyContent<'a>],
+        _context: &mut ConversionContext<'a>,
+    ) -> Result<DocumentAst> {
+        // Example: only extract paragraphs, skip tables
+        let blocks: Vec<BlockNode> = body.iter().filter_map(|content| {
+            if let BodyContent::Paragraph(p) = content {
+                let text = p.text().to_string();
+                if !text.is_empty() {
+                    return Some(BlockNode::Paragraph(text));
+                }
+            }
+            None
+        }).collect();
+        Ok(DocumentAst { blocks, references: Default::default() })
+    }
+}
+
+fn main() -> Result<()> {
+    let converter = DocxToMarkdown::with_components(
+        ConvertOptions::default(),
+        FilteredExtractor,
+        MarkdownRenderer,
+    );
+    let output = converter.convert("report.docx")?;
+    println!("{}", output);
+    Ok(())
+}
 ```
 
 ---
 
 ## Configuration Reference
 
-### ImageHandling
+### ImageHandling Enum
 
-| Value | Description | Use Case |
-|-------|-------------|----------|
-| `ImageHandling::Inline` | Embed as base64 data URIs (default) | Full document conversion |
-| `ImageHandling::SaveToDir(path)` | Save to directory, reference by path | Web publishing |
-| `ImageHandling::Skip` | Omit images entirely | RAG pipelines, text-only |
+| Variant | Builder Method | Description |
+|---------|---------------|-------------|
+| `ImageHandling::Inline` | `.inline_images()` | Embed as base64 data URIs (default) |
+| `ImageHandling::SaveToDir(path)` | `.save_images_to(dir)` | Save to directory, reference by path |
+| `ImageHandling::Skip` | `.skip_images()` | Omit images entirely |
 
-### ConvertOptions
+### ConvertOptions Fields
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `image_handling` | `ImageHandling` | `Inline` | How to handle embedded images |
-| `preserve_whitespace` | `bool` | `false` | Keep original whitespace |
-| `html_underline` | `bool` | `true` | Use `<u>` for underline |
-| `html_strikethrough` | `bool` | `false` | Use `<s>` instead of `~~` |
-| `strict_reference_validation` | `bool` | `false` | Fail on broken note/comment refs |
+| Field | Type | Default | Builder Method |
+|-------|------|---------|---------------|
+| `image_handling` | `ImageHandling` | `Inline` | `.skip_images()` / `.inline_images()` / `.save_images_to()` |
+| `preserve_whitespace` | `bool` | `false` | `.preserve_whitespace()` |
+| `html_underline` | `bool` | `true` | `.html_underline(bool)` |
+| `html_strikethrough` | `bool` | `false` | `.html_strikethrough(bool)` |
+| `strict_reference_validation` | `bool` | `false` | `.strict()` |
 
-### Builder Methods
+### Builder Terminal Methods
 
-```rust
-undocx::builder()
-    // Image handling (mutually exclusive, last wins)
-    .skip_images()                  // ImageHandling::Skip
-    .inline_images()                // ImageHandling::Inline (default)
-    .save_images_to("./images")     // ImageHandling::SaveToDir
-
-    // Formatting
-    .preserve_whitespace()          // preserve_whitespace = true
-    .html_underline(false)          // html_underline = false
-    .html_strikethrough(true)       // html_strikethrough = true
-    .strict()                       // strict_reference_validation = true
-
-    // Terminal: build or convert
-    .build()                        // → Converter (reusable)
-    .convert("file.docx")           // → Result<String>
-    .convert_bytes(&bytes)          // → Result<String>
-    .convert_reader(reader)         // → Result<String>
-```
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `.build()` | `Converter` | Create a reusable converter |
+| `.convert(path)` | `Result<String>` | Build and convert a file |
+| `.convert_bytes(bytes)` | `Result<String>` | Build and convert bytes |
+| `.convert_reader(reader)` | `Result<String>` | Build and convert from reader |
 
 ---
 
@@ -214,49 +267,42 @@ undocx::builder()
 ```python
 import undocx
 
-# From file path
 markdown = undocx.convert_docx("report.docx")
 print(markdown)
 ```
 
-### From Bytes
+### Convert from Bytes
 
 ```python
 import undocx
 
-# From any byte source (S3, HTTP, database)
 with open("report.docx", "rb") as f:
     doc_bytes = f.read()
 
 markdown = undocx.convert_docx(doc_bytes)
 ```
 
-### With Options
+### Skip Images for RAG
 
 ```python
 import undocx
 
-# Skip images for RAG/LLM pipelines
-markdown = undocx.convert_docx(
-    "report.docx",
-    image_handling="skip",
-)
+markdown = undocx.convert_docx("report.docx", image_handling="skip")
 ```
 
+### Save Images to Directory
+
 ```python
 import undocx
 
-# Save images to directory
-markdown = undocx.convert_docx(
-    "report.docx",
-    image_handling="./extracted_images",
-)
+markdown = undocx.convert_docx("report.docx", image_handling="./extracted_images")
 ```
 
+### All Options
+
 ```python
 import undocx
 
-# All options
 markdown = undocx.convert_docx(
     "report.docx",
     image_handling="skip",
@@ -298,7 +344,7 @@ undocx report.docx output.md
 # Extract images to directory
 undocx report.docx output.md --images-dir ./images
 
-# Skip images
+# Skip images entirely
 undocx report.docx --skip-images
 ```
 
@@ -306,16 +352,16 @@ undocx report.docx --skip-images
 
 ## Error Handling
 
-### Rust
+### Rust Error Handling
 
 ```rust
-use undocx::{Error, Result};
+use undocx::{self, Error};
 
-fn safe_convert(path: &str) -> Result<String> {
+fn safe_convert(path: &str) -> undocx::Result<String> {
     match undocx::convert(path) {
         Ok(md) => Ok(md),
         Err(Error::DocxParse(msg)) => {
-            eprintln!("Invalid DOCX file: {}", msg);
+            eprintln!("Invalid DOCX: {}", msg);
             Err(Error::DocxParse(msg))
         }
         Err(Error::Io(e)) => {
@@ -335,53 +381,59 @@ fn safe_convert(path: &str) -> Result<String> {
 
 | Error | Cause |
 |-------|-------|
-| `Error::DocxParse` | Invalid or corrupted DOCX file |
-| `Error::Io` | File system error (not found, permission denied) |
-| `Error::Conversion` | Internal conversion logic error |
-| `Error::MissingReference` | Broken footnote/endnote/comment reference (strict mode) |
-| `Error::Zip` | DOCX archive extraction error |
-| `Error::MediaNotFound` | Referenced image not found in DOCX archive |
+| `undocx::Error::DocxParse` | Invalid or corrupted DOCX file |
+| `undocx::Error::Io` | File not found or permission denied |
+| `undocx::Error::Conversion` | Internal conversion logic error |
+| `undocx::Error::MissingReference` | Broken note/comment reference (strict mode only) |
+| `undocx::Error::Zip` | DOCX archive extraction error |
+| `undocx::Error::MediaNotFound` | Referenced image not found in DOCX archive |
 
 ---
 
 ## Architecture
 
-```
+```text
 DOCX file → DocxFile (rs-docx) → AstExtractor → DocumentAst → Renderer → Markdown
 ```
 
 ### Pipeline Stages
 
 1. **Parse**: `rs-docx` reads the DOCX ZIP archive and parses XML
-2. **Extract**: `AstExtractor` walks the body content, producing `DocumentAst`
+2. **Extract**: `AstExtractor` walks body content, producing `DocumentAst`
 3. **Render**: `Renderer` serializes `DocumentAst` to output string
 
-### Key Types
+### Core Types
 
-| Type | Role |
-|------|------|
-| `Converter` | Type alias for `DocxToMarkdown` with default components |
-| `Builder` | Fluent configuration builder |
-| `DocxToMarkdown<E, R>` | Generic converter, parameterized by extractor and renderer |
-| `DocumentAst` | Intermediate representation (blocks + references) |
-| `BlockNode` | `Paragraph` \| `TableHtml` \| `RawHtml` |
-| `ReferenceDefinitions` | Footnotes, endnotes, comments |
-| `AstExtractor` | Trait for customizing DOCX → AST extraction |
-| `Renderer` | Trait for customizing AST → output rendering |
-| `ConversionContext` | Shared state during conversion (styles, numbering, images) |
-
-### Extensibility
-
-Implement `AstExtractor` to customize parsing, or `Renderer` to produce
-different output formats. Both are public traits with stable API contracts.
-See [API_POLICY.md](API_POLICY.md) for stability guarantees.
+| Type | Module | Role |
+|------|--------|------|
+| `undocx::Converter` | `undocx` | Type alias for default converter |
+| `undocx::Builder` | `undocx` | Fluent configuration builder |
+| `undocx::DocxToMarkdown<E, R>` | `undocx::converter` | Generic converter with custom components |
+| `undocx::core::ast::DocumentAst` | `undocx::core::ast` | Intermediate AST (blocks + references) |
+| `undocx::core::ast::BlockNode` | `undocx::core::ast` | `Paragraph` / `TableHtml` / `RawHtml` |
+| `undocx::core::ast::ReferenceDefinitions` | `undocx::core::ast` | Footnotes, endnotes, comments |
+| `undocx::adapters::docx::AstExtractor` | `undocx::adapters::docx` | Trait: DOCX → AST extraction |
+| `undocx::render::Renderer` | `undocx::render` | Trait: AST → output rendering |
+| `undocx::converter::ConversionContext` | `undocx::converter` | Shared state during conversion |
 
 ---
 
 ## Tips for LLM/RAG Pipelines
 
-- Use `.skip_images()` or `image_handling="skip"` to reduce token count
-- Split output on `## ` headers for semantic chunking
+```rust
+use undocx;
+
+fn rag_ingest(docx_bytes: &[u8]) -> undocx::Result<String> {
+    // Skip images to reduce token count
+    // Use strict mode to catch broken references before indexing
+    undocx::builder()
+        .skip_images()
+        .strict()
+        .convert_bytes(docx_bytes)
+}
+```
+
+- Output is clean Markdown — split on `## ` headers for semantic chunking
 - Footnotes and comments are preserved as `[^ref]` for full context
 - Average conversion time is 3.3ms per file — suitable for batch processing
-- Use `.strict()` to catch broken references before indexing
+- Use `convert_bytes()` for stream-based ingestion from S3 or HTTP
