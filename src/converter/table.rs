@@ -19,6 +19,7 @@ impl TableConverter {
         cell: &TableCell<'a>,
         context: &mut ConversionContext<'a>,
     ) -> Result<String> {
+        context.set_in_table_cell(true);
         let mut content = String::new();
         for item in &cell.content {
             match item {
@@ -37,6 +38,7 @@ impl TableConverter {
                 }
             }
         }
+        context.set_in_table_cell(false);
         Ok(content)
     }
 }
@@ -207,5 +209,40 @@ mod tests {
             Table::default().push_row(TableRow::default().push_cell(outer_cell));
         let html = TableConverter::convert(&outer, &mut ctx).expect("table conversion failed");
         assert_eq!(html.matches("<table>").count(), 2);
+    }
+
+    #[test]
+    fn test_table_cell_monospace_not_wrapped_in_backticks() {
+        use rs_docx::formatting::{CharacterProperty, Fonts};
+
+        let mut mono_run = rs_docx::document::Run {
+            property: Some(CharacterProperty {
+                fonts: Some(Fonts::default().ascii("Consolas").h_ansi("Consolas")),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        mono_run.content.push(rs_docx::document::RunContent::Text(rs_docx::document::Text {
+            text: "undocx (Rust)".into(),
+            ..Default::default()
+        }));
+        let cell = TableCell::paragraph(Paragraph::default().push(mono_run));
+        let table = Table::default()
+            .push_row(TableRow::default().push_cell(cell));
+
+        make_test_context!(ctx);
+        let html = TableConverter::convert(&table, &mut ctx).expect("table conversion failed");
+
+        // Monospace font in table cells should NOT produce backtick wrapping
+        assert!(
+            !html.contains("`undocx (Rust)`"),
+            "Table cell monospace text should not be inline code, got: {}",
+            html
+        );
+        assert!(
+            html.contains("undocx (Rust)"),
+            "Cell text should be present, got: {}",
+            html
+        );
     }
 }

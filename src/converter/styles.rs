@@ -164,6 +164,12 @@ fn merge_char_props_mut<'a>(target: &mut CharacterProperty<'a>, overlay: &Charac
     if overlay.underline.is_some() {
         target.underline = overlay.underline.clone();
     }
+    if overlay.vertical_align.is_some() {
+        target.vertical_align = overlay.vertical_align.clone();
+    }
+    if overlay.fonts.is_some() {
+        target.fonts = overlay.fonts.clone();
+    }
 }
 
 // Helper to merge paragraph properties (in-place mutation)

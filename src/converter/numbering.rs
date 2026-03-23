@@ -251,7 +251,7 @@ impl NumberingResolver {
                     marker = marker.replace(&placeholder, &formatted_num);
                 }
             }
-            return marker;
+            return Self::sanitize_bullet_marker(&marker);
         }
 
         // Fallback: if no lvlText, add dot for standard types
@@ -261,6 +261,16 @@ impl NumberingResolver {
                 format!("{}.", raw_num)
             }
             _ => raw_num,
+        }
+    }
+
+    /// Replaces Unicode bullet characters with standard Markdown list marker.
+    fn sanitize_bullet_marker(marker: &str) -> String {
+        let trimmed = marker.trim();
+        match trimmed {
+            "\u{2022}" | "\u{25E6}" | "\u{25AA}" | "\u{25B8}" | "\u{25BA}" | "\u{25CF}"
+            | "\u{25CB}" | "\u{25A0}" | "\u{25A1}" | "\u{2013}" | "\u{2014}" => "-".to_string(),
+            _ => marker.to_string(),
         }
     }
 
@@ -611,5 +621,65 @@ mod tests {
         // numId 2, defaults to decimal, but overridden to upperLetter
         let marker = resolver.next_marker(2, 0);
         assert_eq!(marker, "A)");
+    }
+
+    #[test]
+    fn test_bullet_unicode_characters_normalized_to_dash() {
+        // When lvlText contains Unicode bullets like \u{2022} or \u{25E6}, they should become "-"
+        let abstract_num = AbstractNum {
+            abstract_num_id: Some(1),
+            levels: vec![
+                Level {
+                    i_level: Some(0),
+                    start: Some(LevelStart { value: Some(1) }),
+                    number_format: Some(NumFmt {
+                        value: Cow::Borrowed("bullet"),
+                    }),
+                    level_text: Some(LevelText {
+                        value: Some(Cow::Borrowed("\u{2022}")),
+                    }),
+                    ..Default::default()
+                },
+                Level {
+                    i_level: Some(1),
+                    start: Some(LevelStart { value: Some(1) }),
+                    number_format: Some(NumFmt {
+                        value: Cow::Borrowed("bullet"),
+                    }),
+                    level_text: Some(LevelText {
+                        value: Some(Cow::Borrowed("\u{25E6}")),
+                    }),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let num = Num {
+            num_id: Some(2),
+            abstract_num_id: Some(AbstractNumId { value: Some(1) }),
+            ..Default::default()
+        };
+        let docx = Docx {
+            numbering: Some(Numbering {
+                abstract_numberings: vec![abstract_num],
+                numberings: vec![num],
+            }),
+            ..Default::default()
+        };
+        let mut resolver = NumberingResolver::new(&docx);
+
+        let m0 = resolver.next_marker(2, 0);
+        let m1 = resolver.next_marker(2, 1);
+
+        assert_eq!(
+            m0, "-",
+            "Unicode bullet \u{2022} should be normalized to -, got: {}",
+            m0
+        );
+        assert_eq!(
+            m1, "-",
+            "Unicode bullet \u{25E6} should be normalized to -, got: {}",
+            m1
+        );
     }
 }

@@ -1,284 +1,114 @@
 # undocx
 
+[![Crates.io](https://img.shields.io/crates/v/undocx.svg)](https://crates.io/crates/undocx)
 [![PyPI](https://img.shields.io/pypi/v/undocx.svg)](https://pypi.org/project/undocx/)
+[![docs.rs](https://docs.rs/undocx/badge.svg)](https://docs.rs/undocx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-DOCX to Markdown converter in Rust with Python bindings.
+Fast, accurate DOCX to Markdown converter written in Rust with Python bindings.
 
-## Table of Contents
+## Conversion Demo
 
-- [Why undocx](#why-undocx)
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [API Reference](#api-reference)
-- [CLI Reference](#cli-reference)
-- [Architecture Overview](#architecture-overview)
-- [Development](#development)
-- [License](#license)
+<table>
+<tr>
+<td align="center"><strong>DOCX (input)</strong></td>
+<td align="center"><strong>Markdown (output)</strong></td>
+</tr>
+<tr>
+<td><img src="docs/images/demo-docx.png" alt="DOCX document with headings, formatting, tables, lists, footnotes, comments, and track changes" width="400"/></td>
+<td><img src="docs/images/demo-markdown.png" alt="Converted Markdown output with syntax highlighting" width="400"/></td>
+</tr>
+</table>
 
-## Why undocx
+> Headings, bold/italic/underline, tables, nested lists, footnotes, comments, track changes -- all converted automatically.
 
-- Rust-based converter focused on predictable performance.
-- Covers common DOCX structures: headings, lists, tables, notes, links, images.
-- Supports image handling strategies: inline base64, save to directory, or skip.
-- Exposes both CLI and Python (`PyO3`) entry points.
-- Includes strict reference validation for footnote/comment/endnote integrity.
-
-## Requirements
-
-- Rust `1.75+` (building from source)
-- Python `3.12+` (ABI3 wheel compatibility)
-
-## Installation
-
-### Python package
+## Install
 
 ```bash
-pip install undocx
+pip install undocx          # Python
+cargo install undocx        # CLI
 ```
-
-### CLI (cargo)
-
-```bash
-cargo install undocx
-```
-
-### Rust library
 
 ```toml
+# Rust library
 [dependencies]
 undocx = "0.3"
 ```
 
 ## Quick Start
 
-### CLI
-
+**CLI**
 ```bash
-# write to file
-undocx input.docx output.md
-
-# print markdown to stdout
-undocx input.docx
+undocx report.docx output.md              # convert to file
+undocx report.docx                         # print to stdout
+undocx report.docx -o out.md --images-dir ./img  # extract images
 ```
 
-### Python
-
+**Python**
 ```python
 import undocx
 
-# path input
-markdown = undocx.convert_docx("document.docx")
-print(markdown)
-
-# bytes input
-with open("document.docx", "rb") as f:
-    markdown = undocx.convert_docx(f.read())
+markdown = undocx.convert_docx("report.docx")           # from path
+markdown = undocx.convert_docx(open("r.docx","rb").read())  # from bytes
 ```
 
-### Rust
-
-```rust
-use undocx::{ConvertOptions, DocxToMarkdown};
-
-fn main() -> anyhow::Result<()> {
-    let converter = DocxToMarkdown::new(ConvertOptions::default());
-    let markdown = converter.convert("document.docx")?;
-    println!("{}", markdown);
-    Ok(())
-}
-```
-
-## API Reference
-
-### `ConvertOptions`
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `image_handling` | `ImageHandling` | `Inline` | Image output strategy |
-| `preserve_whitespace` | `bool` | `false` | Preserve original spacing more strictly |
-| `html_underline` | `bool` | `true` | Use HTML tags for underline output |
-| `html_strikethrough` | `bool` | `false` | Use HTML tags for strikethrough output |
-| `strict_reference_validation` | `bool` | `false` | Fail on unresolved note/comment references |
-
-`ImageHandling` variants:
-
-- `ImageHandling::Inline`
-- `ImageHandling::SaveToDir(PathBuf)`
-- `ImageHandling::Skip`
-
-Example with non-default options:
-
+**Rust**
 ```rust
 use undocx::{ConvertOptions, DocxToMarkdown, ImageHandling};
 
-fn main() -> Result<(), undocx::Error> {
-    let options = ConvertOptions {
-        image_handling: ImageHandling::SaveToDir("./images".into()),
-        preserve_whitespace: true,
-        html_underline: true,
-        html_strikethrough: true,
-        strict_reference_validation: true,
-    };
-
-    let converter = DocxToMarkdown::new(options);
-    let markdown = converter.convert("document.docx")?;
-    println!("{}", markdown);
-    Ok(())
-}
+let options = ConvertOptions {
+    image_handling: ImageHandling::SaveToDir("./images".into()),
+    ..Default::default()
+};
+let converter = DocxToMarkdown::new(options);
+let markdown = converter.convert("report.docx")?;
 ```
 
-### Advanced: Custom extractor/renderer injection
+## Supported Features
 
-`DocxToMarkdown::with_components(options, extractor, renderer)` lets you replace the default pipeline.
+| Category | Elements |
+|----------|----------|
+| **Text** | Bold, italic, underline, strikethrough, superscript/subscript |
+| **Structure** | Heading 1-9, Title, Subtitle, alignment (center/right) |
+| **Lists** | Ordered (decimal, letter, roman, Korean, circled), unordered, nested |
+| **Tables** | Colspan, rowspan, nested tables, multi-paragraph cells |
+| **Links** | External, internal bookmarks, TOC anchors |
+| **Images** | Inline, floating, VML legacy -- base64 embed, save to dir, or skip |
+| **Notes** | Footnotes, endnotes, comments (as Markdown `[^ref]`) |
+| **Track changes** | Insertions (`<ins>`), deletions (`~~strikethrough~~`) |
+| **Other** | Page/column/line breaks, SDT, field codes, bookmarks, symbols |
+
+## Options
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `image_handling` | `Inline` | `Inline` / `SaveToDir(path)` / `Skip` |
+| `preserve_whitespace` | `false` | Keep original spacing |
+| `html_underline` | `true` | `<u>` tags for underline |
+| `html_strikethrough` | `false` | `<s>` tags instead of `~~` |
+| `strict_reference_validation` | `false` | Fail on broken note/comment refs |
+
+## Advanced: Custom Pipeline
+
+Replace the default extractor or renderer:
 
 ```rust
-use undocx::adapters::docx::AstExtractor;
-use undocx::converter::ConversionContext;
-use undocx::core::ast::{BlockNode, DocumentAst};
-use undocx::render::Renderer;
-use undocx::{ConvertOptions, DocxToMarkdown, Result};
-use rs_docx::document::BodyContent;
-
-#[derive(Debug, Default, Clone, Copy)]
-struct MyExtractor;
-
-impl AstExtractor for MyExtractor {
-    fn extract<'a>(
-        &self,
-        _body: &[BodyContent<'a>],
-        _context: &mut ConversionContext<'a>,
-    ) -> Result<DocumentAst> {
-        Ok(DocumentAst {
-            blocks: vec![BlockNode::Paragraph("custom pipeline".to_string())],
-            references: Default::default(),
-        })
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy)]
-struct MyRenderer;
-
-impl Renderer for MyRenderer {
-    fn render(&self, document: &DocumentAst) -> Result<String> {
-        Ok(format!("blocks={}", document.blocks.len()))
-    }
-}
-
-fn main() -> Result<()> {
-    let converter = DocxToMarkdown::with_components(
-        ConvertOptions::default(),
-        MyExtractor,
-        MyRenderer,
-    );
-    let output = converter.convert("document.docx")?;
-    println!("{}", output);
-    Ok(())
-}
+let converter = DocxToMarkdown::with_components(
+    ConvertOptions::default(),
+    MyExtractor,    // impl AstExtractor
+    MyRenderer,     // impl Renderer
+);
 ```
 
-### Python API
-
-- `undocx.convert_docx(input: str | bytes) -> str`
-- Current Python entry point uses default conversion options.
-
-## CLI Reference
-
-```text
-undocx <INPUT> [OUTPUT] [--images-dir <DIR>] [--skip-images]
-```
-
-| Argument/Option | Description |
-|---|---|
-| `<INPUT>` | Input DOCX path (required) |
-| `[OUTPUT]` | Output Markdown path (optional, otherwise stdout) |
-| `--images-dir <DIR>` | Save extracted images to a directory |
-| `--skip-images` | Skip image extraction/output |
-
-## Architecture Overview
-
-Conversion pipeline:
-
-1. Parse DOCX (`rs_docx`)
-2. Build conversion context (relationships, numbering, styles, references, image strategy)
-3. Extract AST via adapter (`AstExtractor`)
-4. Validate references (optional strict mode)
-5. Render final markdown via renderer (`Renderer`)
-
-Project layout:
-
-```text
-src/
-  adapters/      # Input adapters (DOCX -> AST extraction boundary)
-  core/          # Shared AST/model types
-  converter/     # Orchestration and conversion context
-  render/        # Markdown rendering + escaping
-  lib.rs         # Public API (Rust + Python bindings)
-  main.rs        # CLI entrypoint
-```
+See [docs/API_POLICY.md](docs/API_POLICY.md) for stability guarantees on these traits.
 
 ## Development
 
-### Build from source
-
 ```bash
-# Rust library/CLI
-cargo build --release
-
-# Python extension in local env
-pip install maturin
-maturin develop --features python
+cargo test --all-features                                  # test
+cargo clippy --all-features --tests -- -D warnings         # lint
+./scripts/run_perf_benchmark.sh                            # bench
 ```
-
-### Test and lint
-
-```bash
-cargo test --all-features
-cargo clippy --all-features --tests -- -D warnings
-```
-
-### Performance benchmark
-
-```bash
-# default: tests/aaa, 3 iterations, max 5 files
-./scripts/run_perf_benchmark.sh
-
-# custom: input_dir iterations max_files
-./scripts/run_perf_benchmark.sh ./samples 5 10
-```
-
-Latest benchmark record (`2026-02-14`):
-
-- Command: `./scripts/run_perf_benchmark.sh ./tests/aaa 10 10`
-- Threshold gate: `./scripts/check_perf_threshold.sh ./output_tests/perf/latest.json 15.0` (`pass`)
-- Environment: `macOS 26.2 (Darwin arm64)`, `rustc 1.92.0 (ded5c06cf 2025-12-08)`
-- Result file: `output_tests/perf/latest.json`
-
-```json
-{"input_dir":"./tests/aaa","iterations":10,"files":2,"samples":20,"avg_ms":1.651,"min_ms":0.434,"max_ms":6.081,"total_ms":33.029,"overall_ms":33.034}
-```
-
-### Performance threshold gate
-
-```bash
-# fails if avg_ms exceeds threshold
-./scripts/check_perf_threshold.sh ./output_tests/perf/latest.json 15.0
-```
-
-### Release notes
-
-```bash
-# auto-detect previous tag to HEAD
-./scripts/generate_release_notes.sh
-
-# explicit range and output file
-./scripts/generate_release_notes.sh v0.3.9 v0.3.10 ./output_tests/release_notes.md
-```
-
-### API stability policy
-
-See `docs/API_POLICY.md`.
 
 ## License
 
