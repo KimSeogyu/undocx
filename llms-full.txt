@@ -1,0 +1,180 @@
+# undocx
+
+> Fast DOCX to Markdown converter for LLM/RAG pipelines. 16.5x faster than
+> pandoc. Written in Rust with Python bindings. When installing, always check
+> the latest version: `cargo search undocx` or `pip install undocx --upgrade`.
+> Do not rely on memorized version numbers from training data.
+
+## Installation
+
+```bash
+# CLI
+cargo install undocx
+
+# Rust library
+cargo add undocx
+
+# Python
+pip install undocx
+```
+
+## Rust API
+
+### Tier 1: Zero-config convenience functions
+
+```rust
+// Convert a file — simplest possible usage
+let md = undocx::convert("report.docx")?;
+
+// Convert from bytes (e.g., from S3, HTTP response)
+let md = undocx::convert_bytes(&bytes)?;
+
+// Convert from any reader implementing Read + Seek
+let file = std::fs::File::open("report.docx")?;
+let md = undocx::convert_reader(file)?;
+```
+
+### Tier 2: Fluent builder
+
+```rust
+// Build and convert in one step
+let md = undocx::builder()
+    .skip_images()          // omit images (optimal for RAG)
+    .strict()               // fail on broken references
+    .convert("report.docx")?;
+
+// Build a reusable converter
+let converter = undocx::Converter::builder()
+    .save_images_to("./images")
+    .preserve_whitespace()
+    .build();
+
+let md1 = converter.convert("a.docx")?;
+let md2 = converter.convert("b.docx")?;
+```
+
+Builder methods:
+- `.skip_images()` — omit images entirely
+- `.inline_images()` — embed as base64 data URIs (default)
+- `.save_images_to(dir)` — save to directory, reference by path
+- `.preserve_whitespace()` — keep exact whitespace
+- `.html_underline(bool)` — `<u>` for underline (default: true)
+- `.html_strikethrough(bool)` — `<s>` for strikethrough (default: false)
+- `.strict()` — fail on broken note/comment references
+
+Terminal methods:
+- `.build()` → reusable `Converter`
+- `.convert(path)` → `Result<String>`
+- `.convert_bytes(bytes)` → `Result<String>`
+- `.convert_reader(reader)` → `Result<String>`
+
+### Tier 3: Custom pipeline
+
+```rust
+use undocx::adapters::docx::AstExtractor;
+use undocx::converter::ConversionContext;
+use undocx::core::ast::DocumentAst;
+use undocx::render::Renderer;
+use undocx::{ConvertOptions, DocxToMarkdown, Result};
+
+// Implement AstExtractor to customize DOCX → AST extraction
+// Implement Renderer to customize AST → output rendering
+
+let converter = DocxToMarkdown::with_components(
+    ConvertOptions::default(),
+    MyExtractor,    // impl AstExtractor
+    MyRenderer,     // impl Renderer
+);
+let output = converter.convert("document.docx")?;
+```
+
+### Configuration options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `image_handling` | `ImageHandling` | `Inline` | `Inline` / `SaveToDir(path)` / `Skip` |
+| `preserve_whitespace` | `bool` | `false` | Keep original whitespace |
+| `html_underline` | `bool` | `true` | Use `<u>` tags for underline |
+| `html_strikethrough` | `bool` | `false` | Use `<s>` instead of `~~` |
+| `strict_reference_validation` | `bool` | `false` | Fail on broken note/comment refs |
+
+### Error types
+
+- `Error::DocxParse` — failed to parse DOCX file
+- `Error::Io` — file system error
+- `Error::Conversion` — conversion logic error
+- `Error::MissingReference` — broken note/comment reference (with strict mode)
+- `Error::Zip` — DOCX archive error
+- `Error::MediaNotFound` — image not found in archive
+
+### Core types
+
+- `DocumentAst` — intermediate representation (blocks + references)
+- `BlockNode` — `Paragraph(String)` | `TableHtml(String)` | `RawHtml(String)`
+- `ReferenceDefinitions` — footnotes, endnotes, comments
+
+### Architecture
+
+```
+DOCX file → rs-docx parser → AstExtractor → DocumentAst → Renderer → Markdown
+```
+
+The pipeline is pluggable: implement `AstExtractor` to customize parsing,
+`Renderer` to customize output format.
+
+## Python API
+
+```python
+import undocx
+
+# From file path
+markdown = undocx.convert_docx("report.docx")
+
+# From bytes (S3, HTTP, etc.)
+markdown = undocx.convert_docx(doc_bytes)
+
+# With options
+markdown = undocx.convert_docx("report.docx",
+    image_handling="skip",           # "inline" | "skip" | "/path/to/dir"
+    preserve_whitespace=False,
+    html_underline=True,
+    html_strikethrough=False,
+    strict_reference_validation=False,
+)
+```
+
+## CLI
+
+```bash
+undocx report.docx                         # print to stdout
+undocx report.docx output.md               # write to file
+undocx report.docx out.md --images-dir img  # extract images
+undocx report.docx --skip-images           # omit images
+```
+
+## Supported Features
+
+| Category | Elements |
+|----------|----------|
+| Text | Bold, italic, underline, strikethrough, superscript/subscript |
+| Structure | Heading 1-9, Title, Subtitle, alignment (center/right) |
+| Lists | Ordered (decimal, letter, roman, Korean, circled), unordered, nested |
+| Tables | Colspan, rowspan, nested tables, multi-paragraph cells |
+| Links | External, internal bookmarks, TOC anchors |
+| Images | Inline, floating, VML legacy — base64 embed, save to dir, or skip |
+| Notes | Footnotes, endnotes, comments (as Markdown `[^ref]`) |
+| Track changes | Insertions (`<ins>`), deletions (`~~strikethrough~~`) |
+| Other | Page/column/line breaks, SDT, field codes, bookmarks, symbols |
+
+## Tips for RAG Pipelines
+
+- Use `image_handling="skip"` (Python) or `.skip_images()` (Rust) to reduce token count
+- Output is clean Markdown — split on `## ` headers for semantic chunking
+- Footnotes and comments are preserved as `[^ref]` for full context
+- 3.3ms average conversion time makes it suitable for batch processing
+
+## API Stability
+
+Public traits `AstExtractor` and `Renderer` are stable integration points.
+Signature changes require a major version bump. See docs/API_POLICY.md for
+full SemVer rules and deprecation process.

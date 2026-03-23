@@ -1,4 +1,4 @@
-<!-- Generated: 2026-03-22 | Updated: 2026-03-22 -->
+<!-- Generated: 2026-03-22 | Updated: 2026-03-23 -->
 
 # undocx
 
@@ -25,7 +25,8 @@ A high-performance DOCX to Markdown converter written in Rust, with Python bindi
 | `examples/` | Usage examples in Rust and Python (see `examples/AGENTS.md`) |
 | `scripts/` | CI/CD and benchmark scripts (see `scripts/AGENTS.md`) |
 | `docs/` | Project documentation and policies (see `docs/AGENTS.md`) |
-| `samples/` | Real-world Korean financial/legal DOCX test documents |
+| `samples/` | Real-world Korean financial/legal DOCX test documents (see `samples/AGENTS.md`) |
+| `output_tests/` | Conversion output and benchmark results (see `output_tests/AGENTS.md`) |
 | `.github/` | GitHub Actions workflows and CODEOWNERS (see `.github/AGENTS.md`) |
 
 ## For AI Agents
@@ -48,6 +49,21 @@ A high-performance DOCX to Markdown converter written in Rust, with Python bindi
 DOCX file → rs-docx parser → AstExtractor → DocumentAst → Renderer → Markdown
 ```
 The pipeline is pluggable via `DocxToMarkdown::with_components(options, extractor, renderer)`.
+
+### Public API (3-tier)
+```rust
+// Tier 1: Zero-config convenience
+let md = undocx::convert("doc.docx")?;
+let md = undocx::convert_bytes(bytes)?;
+let md = undocx::convert_reader(file)?;
+
+// Tier 2: Fluent builder
+let md = undocx::builder().skip_images().convert("doc.docx")?;
+let converter = undocx::Converter::builder().save_images_to("./img").build();
+
+// Tier 3: Custom pipeline
+let converter = DocxToMarkdown::with_components(opts, extractor, renderer);
+```
 
 ### Common Patterns
 - Trait-based abstraction: `AstExtractor` for input, `Renderer` for output

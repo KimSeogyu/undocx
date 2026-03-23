@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-22 | Updated: 2026-03-22 -->
+<!-- Generated: 2026-03-22 | Updated: 2026-03-23 -->
 
 # converter
 
@@ -10,7 +10,7 @@ Core conversion logic that orchestrates DOCX to Markdown transformation. Contain
 
 | File | Description |
 |------|-------------|
-| `mod.rs` | `DocxToMarkdown` — main orchestrator: parses DOCX, builds context, delegates to extractor/renderer. Supports `new()`, `with_components()`, `convert()`, `convert_from_bytes()` |
+| `mod.rs` | `DocxToMarkdown` — main orchestrator: parses DOCX, builds context, delegates to extractor/renderer. Supports `new()`, `builder()`, `with_components()`, `convert()`, `convert_bytes()`, `convert_reader()` |
 | `context.rs` | `ConversionContext` — shared mutable state: relationship map, numbering, images, footnotes/endnotes/comments tracking, missing reference detection |
 | `paragraph.rs` | `ParagraphConverter` — converts paragraphs to Markdown (headings, lists, blockquotes, regular text). Largest file (~43KB) |
 | `run.rs` | `RunConverter` — converts text runs with formatting (bold, italic, underline, strikethrough, code) |

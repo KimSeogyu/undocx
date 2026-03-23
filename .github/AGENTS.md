@@ -23,4 +23,12 @@ GitHub configuration — CI/CD workflows and code ownership.
 ### Working In This Directory
 - Workflow changes affect CI/CD — test locally with `act` or verify in a PR before merging
 
+### Testing Requirements
+- Open a PR to verify workflow changes pass before merging
+
+## Dependencies
+
+### Internal
+- Workflows call scripts from `scripts/`
+
 <!-- MANUAL: -->

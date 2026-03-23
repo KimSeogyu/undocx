@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-22 | Updated: 2026-03-22 -->
+<!-- Generated: 2026-03-22 | Updated: 2026-03-23 -->
 
 # tests
 
@@ -21,8 +21,8 @@ Integration and end-to-end test suites for the undocx converter. Includes golden
 | Directory | Purpose |
 |-----------|---------|
 | `pandoc/` | Pandoc reference DOCX files (~36 files) — comprehensive feature coverage |
-| `golden/` | Expected Markdown output files for golden snapshot comparison |
-| `output/` | Generated test output files (~35 `.md` files) — gitignored or regenerated |
+| `golden/` | Expected Markdown output for golden snapshot comparison (see `golden/AGENTS.md`) |
+| `output/` | Generated test output files (~35 `.md` files) (see `output/AGENTS.md`) |
 | `aaa/` | Simple test DOCX documents for basic validation |
 
 ## For AI Agents

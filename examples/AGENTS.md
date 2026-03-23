@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-22 | Updated: 2026-03-22 -->
+<!-- Generated: 2026-03-22 | Updated: 2026-03-23 -->
 
 # examples
 
@@ -16,8 +16,8 @@ Usage examples demonstrating how to use undocx from Rust and Python, plus a perf
 
 | Directory | Purpose |
 |-----------|---------|
-| `rust_example/` | Standalone Rust project showing library usage |
-| `python_example/` | Python script demonstrating PyO3 bindings |
+| `rust_example/` | Standalone Rust project showing library usage (see `rust_example/AGENTS.md`) |
+| `python_example/` | Python script demonstrating PyO3 bindings (see `python_example/AGENTS.md`) |
 
 ## For AI Agents
 
@@ -29,5 +29,11 @@ Usage examples demonstrating how to use undocx from Rust and Python, plus a perf
 ### Testing Requirements
 - Examples should compile and run successfully against the current library version
 - Update examples when public API changes
+
+## Dependencies
+
+### Internal
+- `undocx` crate (library under demonstration)
+- `samples/` (DOCX test documents)
 
 <!-- MANUAL: -->

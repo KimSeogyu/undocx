@@ -97,16 +97,17 @@ md = undocx.convert_docx("report.docx", image_handling="skip")
 md = undocx.convert_docx(doc_bytes, image_handling="skip")
 ```
 
-**Rust — Custom pipeline**
+**Rust — One-liner**
 ```rust
-use undocx::{ConvertOptions, DocxToMarkdown, ImageHandling};
+let md = undocx::convert("report.docx")?;
+let md = undocx::convert_bytes(&bytes)?;
+```
 
-let options = ConvertOptions {
-    image_handling: ImageHandling::Skip,  // optimal for RAG
-    ..Default::default()
-};
-let converter = DocxToMarkdown::new(options);
-let markdown = converter.convert("report.docx")?;
+**Rust — Builder (optimal for RAG)**
+```rust
+let md = undocx::builder()
+    .skip_images()
+    .convert("report.docx")?;
 ```
 
 **Rust — Pluggable architecture**

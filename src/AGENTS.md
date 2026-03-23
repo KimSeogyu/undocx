@@ -1,5 +1,5 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-03-22 | Updated: 2026-03-22 -->
+<!-- Generated: 2026-03-22 | Updated: 2026-03-23 -->
 
 # src
 
@@ -10,7 +10,7 @@ Main Rust source code for the undocx converter. Implements a three-stage pipelin
 
 | File | Description |
 |------|-------------|
-| `lib.rs` | Library entry point — exports public API (`DocxToMarkdown`, `ConvertOptions`, `ImageHandling`), Python bindings behind `python` feature |
+| `lib.rs` | Library entry point — exports `Converter` (alias), `Builder`, `ConvertOptions`, `ImageHandling`, top-level `convert()`/`convert_bytes()`/`convert_reader()`/`builder()`, Python bindings behind `python` feature |
 | `main.rs` | CLI entry point using `clap` — accepts input/output paths and image handling flags |
 | `error.rs` | Error types via `thiserror`: `DocxParse`, `Io`, `Conversion`, `RelationshipNotFound`, `MissingReference`, `Zip`, `MediaNotFound` |
 | `localization.rs` | Heading style parsing — maps DOCX style names ("Heading1", "Title") to heading levels |
