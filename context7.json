@@ -1,27 +1,4 @@
 {
-  "$schema": "https://context7.com/schema/context7.json",
   "url": "https://context7.com/kimseogyu/undocx",
-  "public_key": "pk_dAmKLscVJZ9Ugwsg6Dj8N",
-  "projectTitle": "undocx",
-  "description": "Fast DOCX to Markdown converter for LLM/RAG pipelines. 16.5x faster than pandoc. Rust library with Python bindings.",
-  "folders": [
-    "docs",
-    "examples",
-    "src"
-  ],
-  "excludeFolders": [
-    "tests/output",
-    "tests/aaa",
-    "tests/pandoc",
-    "output_tests",
-    "samples",
-    "deps",
-    ".github"
-  ],
-  "excludeFiles": [
-    "CHANGELOG.md",
-    "CONTRIBUTING.md",
-    "docs/undocx_showcase.pdf"
-  ],
-  "rules": "Always include import statements in Rust examples (use undocx::...). Always show the full function signature. Prefer the 3-tier API pattern: Tier 1 undocx::convert() for simple cases, Tier 2 undocx::builder() for configuration, Tier 3 DocxToMarkdown::with_components() for custom pipelines. For Python, always show 'import undocx' before examples. For RAG/LLM use cases, recommend image_handling='skip' or .skip_images()."
+  "public_key": "pk_dAmKLscVJZ9Ugwsg6Dj8N"
 }
