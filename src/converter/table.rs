@@ -1,15 +1,18 @@
-//! Table converter - converts tables to HTML with merge support.
+//! Renders DOCX tables as HTML `<table>` elements.
+//!
+//! Markdown tables cannot express colspan or rowspan, so we emit HTML
+//! instead. The heavy lifting — grid computation and cell-merge resolution
+//! — lives in [`table_grid`]; this module handles the cell-content
+//! conversion that feeds into it.
 
 use super::table_grid;
 use super::{ConversionContext, ParagraphConverter};
 use crate::Result;
 use rs_docx::document::{Table, TableCell, TableCellContent};
 
-/// Converter for Table elements.
 pub struct TableConverter;
 
 impl TableConverter {
-    /// Converts a Table to HTML format with correct merge handling.
     pub fn convert<'a>(table: &Table<'a>, context: &mut ConversionContext<'a>) -> Result<String> {
         let grid = table_grid::build_grid(table, |cell| Self::convert_cell_content(cell, context))?;
         Ok(table_grid::render_grid(grid))

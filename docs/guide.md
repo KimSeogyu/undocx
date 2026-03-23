@@ -1,6 +1,8 @@
 # undocx API Guide
 
-Comprehensive guide to the undocx DOCX-to-Markdown converter API.
+This guide walks through every way to use undocx — from a single function
+call to a fully custom conversion pipeline. Pick the section that matches
+your use case; each one is self-contained with runnable examples.
 
 ## Installation
 
@@ -143,7 +145,8 @@ fn main() -> undocx::Result<()> {
 
 ### Custom Pipeline — Custom Renderer
 
-Implement `Renderer` to produce any output format (plain text, HTML, JSON):
+If Markdown isn't your target format, you can replace the renderer entirely.
+Implement the `Renderer` trait to produce plain text, HTML, JSON, or anything else:
 
 ```rust
 use undocx::core::ast::{BlockNode, DocumentAst};
@@ -183,7 +186,9 @@ fn main() -> Result<()> {
 
 ### Custom Pipeline — Custom Extractor
 
-Implement `AstExtractor` to customize how DOCX elements map to AST nodes:
+The other side of the pipeline is extraction — how DOCX body elements
+become AST nodes. Implement `AstExtractor` to filter, transform, or
+enrich the document before rendering:
 
 ```rust
 use undocx::adapters::docx::AstExtractor;

@@ -2,7 +2,7 @@
 //!
 //! This module defines the [`AstExtractor`] trait and provides the built-in
 //! [`DocxExtractor`]. Implement `AstExtractor` to customize how DOCX body
-//! content is transformed into a [`DocumentAst`](crate::core::ast::DocumentAst),
+//! content is transformed into a [`DocumentAst`],
 //! then pass it to
 //! [`DocxToMarkdown::with_components`](crate::DocxToMarkdown::with_components).
 
@@ -13,7 +13,7 @@ use crate::core::ast::DocumentAst;
 use crate::Result;
 use rs_docx::document::BodyContent;
 
-/// Extracts a [`DocumentAst`](crate::core::ast::DocumentAst) from parsed DOCX
+/// Extracts a [`DocumentAst`] from parsed DOCX
 /// body content.
 ///
 /// The default implementation is [`DocxExtractor`], which delegates to

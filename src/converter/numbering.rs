@@ -1,9 +1,14 @@
-//! Numbering resolver - handles list numbering and indentation.
+//! Resolves OOXML numbering definitions into Markdown list markers.
+//!
+//! DOCX list numbering is surprisingly complex: abstract definitions are
+//! shared across instances, instances can override individual levels,
+//! and Korean legal documents layer article/clause numbering on top.
+//! This module tracks counters per abstract-numbering-ID so that
+//! continuous lists produce correct sequences even when the num-ID changes.
 
 use rs_docx::Docx;
 use std::collections::HashMap;
 
-/// Resolver for DOCX numbering definitions.
 pub struct NumberingResolver {
     /// Maps numId -> abstractNumId
     num_instances: HashMap<i32, i32>,
@@ -114,11 +119,8 @@ impl NumberingResolver {
                                 .as_ref()
                                 .and_then(|s| s.value)
                                 .map(|v| v as i32)
-                                .unwrap_or(1); // Default to 1 if not specified in override? Or inherit?
-                                               // In strict XML, if start not present in override, it might inherit.
-                                               // But here we construct a full LevelDef.
-                                               // Ideally we should merge with abstract level.
-                                               // For now, let's take what's in the override or default.
+                                .unwrap_or(1); // Override may omit start; default to 1 rather than
+                                               // merging with the abstract level definition.
 
                             let num_fmt = level
                                 .number_format

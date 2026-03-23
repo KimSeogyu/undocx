@@ -1,4 +1,8 @@
-//! Image extractor - handles image extraction from DOCX.
+//! Extracts images from DOCX archives under one of three strategies:
+//! embed as inline base64, save to a directory, or skip entirely.
+//!
+//! The ZIP archive is opened once at construction and reused for every
+//! image lookup, avoiding repeated decompression passes over the file.
 
 use crate::{error::Error, Result};
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -9,7 +13,6 @@ use std::fs::{self, File};
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 
-/// Extractor for images embedded in DOCX.
 pub struct ImageExtractor {
     mode: ImageMode,
     source: ImageSource,

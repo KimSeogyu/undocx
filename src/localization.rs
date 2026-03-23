@@ -1,4 +1,8 @@
-//! Heading style parsing utilities.
+//! DOCX style-name classification and font-family detection.
+//!
+//! OOXML uses locale-sensitive style names for headings, blockquotes,
+//! and code blocks. This module centralizes the string matching so that
+//! converters don't duplicate the same lookup tables.
 
 /// Parses a DOCX style name to determine if it's a blockquote style.
 pub fn is_blockquote_style(style: &str) -> bool {
@@ -40,6 +44,17 @@ pub fn is_monospace_font_name(name: &str) -> bool {
         || lower.contains("liberation mono")
         || lower.contains("andale mono")
         || lower.contains("lucida console")
+}
+
+/// Returns true if either the ASCII or High-ANSI font in a `Fonts` value
+/// is a known monospace family.
+pub fn is_monospace_font(fonts: &rs_docx::formatting::Fonts) -> bool {
+    let check = |name: &Option<String>| -> bool {
+        name.as_ref()
+            .map(|n| is_monospace_font_name(n))
+            .unwrap_or(false)
+    };
+    check(&fonts.ascii) || check(&fonts.h_ansi)
 }
 
 /// Parses a DOCX style name to determine the heading level.
