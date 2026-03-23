@@ -17,7 +17,10 @@ categories = [
 ]
 include = [
     "src/**/*",
-    "tests/**/*",
+    "tests/*.rs",
+    "tests/aaa/**/*",
+    "tests/pandoc/**/*",
+    "tests/golden/**/*",
     "examples/python_example/*.py",
     "examples/python_example/*.toml",
     "examples/python_example/*.lock",
