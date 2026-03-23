@@ -11,12 +11,12 @@ Fast, accurate DOCX to Markdown converter written in Rust with Python bindings.
 
 <table>
 <tr>
-<td align="center"><strong>DOCX (input)</strong></td>
-<td align="center"><strong>Markdown (output)</strong></td>
+<td align="center" width="50%"><strong>DOCX (input)</strong></td>
+<td align="center" width="50%"><strong>Markdown (output)</strong></td>
 </tr>
 <tr>
-<td><a href="docs/undocx_showcase.pdf"><img src="docs/images/demo-docx.png" alt="DOCX input document" width="400"/></a></td>
-<td><a href="docs/undocx_showcase.md"><img src="docs/images/demo-markdown.png" alt="Converted Markdown output" width="400"/></a></td>
+<td valign="top"><a href="docs/undocx_showcase.pdf"><img src="docs/images/demo-docx.png" alt="DOCX input document"/></a></td>
+<td valign="top"><a href="docs/undocx_showcase.md"><img src="docs/images/demo-markdown.png" alt="Converted Markdown output"/></a></td>
 </tr>
 </table>
 
