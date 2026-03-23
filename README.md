@@ -9,11 +9,18 @@ Fast, accurate DOCX to Markdown converter written in Rust with Python bindings.
 
 ## Conversion Demo
 
-| DOCX (input) | Markdown (output) |
-|:---:|:---:|
-| [undocx_showcase.pdf](docs/undocx_showcase.pdf) | [undocx_showcase.md](docs/undocx_showcase.md) |
+<table>
+<tr>
+<td align="center"><strong>DOCX (input)</strong></td>
+<td align="center"><strong>Markdown (output)</strong></td>
+</tr>
+<tr>
+<td><a href="docs/undocx_showcase.pdf"><img src="docs/images/demo-docx.png" alt="DOCX input document" width="400"/></a></td>
+<td><a href="docs/undocx_showcase.md"><img src="docs/images/demo-markdown.png" alt="Converted Markdown output" width="400"/></a></td>
+</tr>
+</table>
 
-> Click each link to see GitHub's native rendering. Headings, bold/italic/underline, tables, nested lists, footnotes, code blocks, track changes -- all converted automatically.
+> Click images to see full GitHub-rendered files. Headings, bold/italic/underline, tables, nested lists, footnotes, code blocks, track changes -- all converted automatically.
 
 ## Install
 
