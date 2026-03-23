@@ -7,7 +7,7 @@
 
 Fast, accurate DOCX to Markdown converter built for LLM/RAG pipelines. Written in Rust with Python bindings.
 
-- **Blazing fast**: ~1.6ms per file average (600x faster than pandoc)
+- **Blazing fast**: ~3.3ms per file average (16.5x faster than pandoc)
 - **LLM-optimized**: Clean Markdown output ready for embeddings, chunking, and retrieval
 - **Dual interface**: Python library for ML pipelines + CLI for batch processing
 - **Full fidelity**: Tables, footnotes, track changes, images, nested lists, and more
@@ -109,32 +109,32 @@ See [docs/API_POLICY.md](docs/API_POLICY.md) for stability guarantees on these t
 
 ## Benchmarks
 
-Measured on the included test corpus (Korean financial/legal documents):
+Measured on 39 DOCX files × 10 iterations (see `examples/benchmark_comparison.py`):
 
-| Metric | Value |
-|--------|-------|
-| Avg per file | **1.65 ms** |
-| Min | 0.43 ms |
-| Max | 6.08 ms |
-| Throughput | ~600 files/sec |
+| Tool | Avg (ms) | Median (ms) | Min (ms) | Max (ms) |
+|------|----------|-------------|----------|----------|
+| **undocx** | **3.34** | **3.22** | **2.89** | **5.46** |
+| markitdown | 18.25 | 17.45 | 14.63 | 41.81 |
+| pandoc | 55.08 | 54.11 | 40.31 | 69.51 |
 
-Run locally: `./scripts/run_perf_benchmark.sh`
+**undocx is 16.5x faster than pandoc and 5.5x faster than markitdown.**
+
+Run locally: `python examples/benchmark_comparison.py ./tests/pandoc 10`
 
 ## Comparison
 
-| Feature | undocx | pandoc | python-docx | mammoth |
-|---------|--------|--------|-------------|---------|
-| Language | Rust | Haskell | Python | JS/Python |
-| Speed | ~1.6ms/file | ~1s/file | ~200ms/file | ~100ms/file |
-| Tables (colspan/rowspan) | Yes | Partial | Read-only | Yes |
-| Track changes | Yes | Yes | No | No |
-| Footnotes/Endnotes | Yes | Yes | No | Yes |
-| Comments | Yes | No | No | No |
-| VML legacy images | Yes | No | No | No |
-| Korean numbering | Yes | No | No | No |
-| Python API | Yes | CLI only | Yes | Yes |
-| Rust API | Yes | No | No | No |
-| Binary size | ~4 MB | ~120 MB | N/A | N/A |
+| Feature | undocx | pandoc | markitdown |
+|---------|--------|--------|------------|
+| Language | Rust | Haskell | Python |
+| Speed (avg) | 3.3ms/file | 55ms/file | 18ms/file |
+| Tables (colspan/rowspan) | Yes | Partial | Yes |
+| Track changes | Yes | Yes | No |
+| Footnotes/Endnotes | Yes | Yes | No |
+| Comments | Yes | No | No |
+| VML legacy images | Yes | No | No |
+| Korean numbering | Yes | No | No |
+| Python API | Yes | CLI only | Yes |
+| Rust API | Yes | No | No |
 
 ## For LLM/RAG Users
 
