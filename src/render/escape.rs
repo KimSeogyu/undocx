@@ -1,3 +1,6 @@
+/// Escapes a string for safe use inside an HTML attribute value.
+///
+/// Replaces `&`, `<`, `>`, `"`, and `'` with their HTML entity equivalents.
 pub fn escape_html_attr(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for ch in value.chars() {
@@ -13,6 +16,9 @@ pub fn escape_html_attr(value: &str) -> String {
     escaped
 }
 
+/// Escapes a string for use inside Markdown link text (`[text](url)`).
+///
+/// Backslash-escapes `\`, `[`, and `]`.
 pub fn escape_markdown_link_text(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for ch in value.chars() {
@@ -27,6 +33,9 @@ pub fn escape_markdown_link_text(value: &str) -> String {
     escaped
 }
 
+/// Escapes a string for use inside a Markdown link destination (`[text](url)`).
+///
+/// Backslash-escapes `\`, `(`, `)`, and spaces.
 pub fn escape_markdown_link_destination(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for ch in value.chars() {
