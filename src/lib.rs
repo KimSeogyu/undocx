@@ -117,7 +117,6 @@ pub struct Builder {
 }
 
 impl Builder {
-    /// Creates a new builder with default options.
     pub fn new() -> Self {
         Self {
             options: ConvertOptions::default(),

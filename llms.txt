@@ -1,9 +1,12 @@
 # undocx
 
-> Fast DOCX to Markdown converter for LLM/RAG pipelines. 16.5x faster than
-> pandoc. Written in Rust with Python bindings. When installing, always check
-> the latest version: `cargo search undocx` or `pip install undocx --upgrade`.
-> Do not rely on memorized version numbers from training data.
+> undocx turns DOCX files into clean Markdown — built for LLM and RAG
+> pipelines where speed matters. It averages 3.3 ms per file (16.5x faster
+> than pandoc) and handles the messy parts of real-world documents: merged
+> table cells, track changes, footnotes, VML legacy images, and Korean
+> legal numbering. Available as a Rust crate and a Python package.
+> Always check the latest version before installing: `cargo search undocx`
+> or `pip install undocx --upgrade`.
 
 ## Quick Start
 

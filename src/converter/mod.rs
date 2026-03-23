@@ -209,21 +209,19 @@ where
     ///
     /// # Errors
     ///
-    /// Returns [`Error::DocxParse`](crate::Error::DocxParse) if the file cannot
-    /// be parsed, [`Error::Io`](crate::Error::Io) for file-system errors, or
-    /// [`Error::MissingReference`](crate::Error::MissingReference) when strict
+    /// Returns [`Error::DocxParse`] if the file cannot
+    /// be parsed, [`Error::Io`] for file-system errors, or
+    /// [`Error::MissingReference`] when strict
     /// validation is enabled and a reference target is missing.
     pub fn convert<P: AsRef<Path>>(&self, path: P) -> Result<String> {
         let path = path.as_ref();
 
-        // Parse DOCX file
         let docx_file =
             DocxFile::from_file(path).map_err(|e| Error::DocxParse(format!("{:?}", e)))?;
         let docx = docx_file
             .parse()
             .map_err(|e| Error::DocxParse(format!("{:?}", e)))?;
 
-        // Initialize image extractor based on options
         let mut image_extractor = match &self.options.image_handling {
             ImageHandling::SaveToDir(dir) => ImageExtractor::new_with_dir(path, dir.clone())?,
             ImageHandling::Inline => ImageExtractor::new_inline(path)?,
@@ -246,7 +244,6 @@ where
             .parse()
             .map_err(|e| Error::DocxParse(format!("{:?}", e)))?;
 
-        // Initialize image extractor based on options
         let mut image_extractor = match &self.options.image_handling {
             ImageHandling::SaveToDir(dir) => {
                 ImageExtractor::new_with_dir_from_bytes(bytes, dir.clone())?

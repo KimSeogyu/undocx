@@ -1,36 +1,18 @@
-//! Run element converter - handles text runs with formatting.
+//! Converts a DOCX `<w:run>` into Markdown-level inline markup.
+//!
+//! A "run" is OOXML's unit of consistent character formatting — a contiguous
+//! span where bold/italic/font/etc. don't change. This module decides how
+//! to map those properties to Markdown: monospace fonts become backtick code,
+//! bold becomes `<strong>`, and so on.
 
 use super::ConversionContext;
+use crate::localization::is_monospace_font;
 use crate::Result;
 use rs_docx::document::{BreakType, Run, RunContent};
 
-/// Returns true if the given Fonts value indicates a monospace font family.
-fn is_monospace_font(fonts: &rs_docx::formatting::Fonts) -> bool {
-    let check = |name: &Option<String>| -> bool {
-        name.as_ref()
-            .map(|n| {
-                let lower = n.to_lowercase();
-                lower.contains("courier")
-                    || lower.contains("consolas")
-                    || lower.contains("mono")
-                    || lower.contains("source code")
-                    || lower.contains("fira code")
-                    || lower.contains("menlo")
-                    || lower.contains("dejavu sans mono")
-                    || lower.contains("liberation mono")
-                    || lower.contains("andale mono")
-                    || lower.contains("lucida console")
-            })
-            .unwrap_or(false)
-    };
-    check(&fonts.ascii) || check(&fonts.h_ansi)
-}
-
-/// Converter for Run elements.
 pub struct RunConverter;
 
 impl RunConverter {
-    /// Converts a Run to Markdown text with formatting.
     pub fn convert<'a>(
         run: &Run<'a>,
         context: &mut ConversionContext<'a>,
@@ -62,21 +44,17 @@ impl RunConverter {
                     text.push('\u{00AD}');
                 }
                 RunContent::Drawing(drawing) => {
-                    // Handle inline images (DrawingML)
                     if let Some(img_md) = context.extract_image_from_drawing(drawing)? {
                         text.push_str(&img_md);
                     }
                 }
                 RunContent::Pict(pict) => {
-                    // Handle legacy images (VML)
                     if let Some(img_md) = context.extract_image_from_pict(pict)? {
                         text.push_str(&img_md);
                     }
                 }
                 RunContent::Sym(sym) => {
-                    // Symbol character - use Unicode if possible
                     if let Some(char_code) = &sym.char {
-                        // Try to decode hex char code
                         if let Ok(code) = u32::from_str_radix(char_code, 16) {
                             if let Some(c) = char::from_u32(code) {
                                 text.push(c);
@@ -101,7 +79,6 @@ impl RunConverter {
                     }
                 }
                 RunContent::CommentReference(cref) => {
-                    // Extract comment ID and look up comment text
                     if let Some(id) = &cref.id {
                         let marker = context.register_comment_reference(id.as_ref());
                         text.push_str(&marker);
@@ -125,12 +102,10 @@ impl RunConverter {
             }
         }
 
-        // Apply formatting if text is not empty
         if text.is_empty() {
             return Ok(text);
         }
 
-        // Run Style ID
         let mut run_style_id = None;
         if let Some(props) = &run.property {
             if let Some(style) = &props.style_id {
@@ -138,7 +113,6 @@ impl RunConverter {
             }
         }
 
-        // Check formatting via resolver
         let effective_props =
             context.resolve_run_property(run.property.as_ref(), run_style_id, para_style_id);
 
@@ -147,7 +121,9 @@ impl RunConverter {
         Ok(text)
     }
 
-    /// Applies text formatting based on run properties.
+    /// Formatting precedence (highest priority first):
+    /// monospace → inline code, then underline → strike → bold/italic → super/subscript.
+    /// Monospace short-circuits: if a run uses a code font, no other formatting is applied.
     fn apply_formatting(
         text: &str,
         props: &rs_docx::formatting::CharacterProperty<'_>,
@@ -155,37 +131,29 @@ impl RunConverter {
     ) -> String {
         let mut result = text.to_string();
 
-        // Check for monospace font → inline code (takes priority)
         let is_code = props.fonts.as_ref().map(is_monospace_font).unwrap_or(false);
         if is_code {
             return format!("`{}`", result);
         }
 
-        // Check for bold
         let is_bold = props
             .bold
             .as_ref()
             .map(|b| b.value.unwrap_or(true))
             .unwrap_or(false);
-
-        // Check for italic
         let is_italic = props
             .italics
             .as_ref()
             .map(|i| i.value.unwrap_or(true))
             .unwrap_or(false);
 
-        // Check for underline
         let has_underline = props.underline.is_some();
-
-        // Check for strikethrough
         let has_strike = props
             .strike
             .as_ref()
             .map(|s| s.value.unwrap_or(true))
             .unwrap_or(false);
 
-        // Apply formatting in order: underline (HTML), strike, bold, italic
         if has_underline && context.html_underline_enabled() {
             result = format!("<u>{}</u>", result);
         }

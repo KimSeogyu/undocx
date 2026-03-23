@@ -1,16 +1,20 @@
-//! Paragraph converter - handles paragraph elements and their structure.
+//! Maps DOCX `<w:p>` elements to Markdown block structure.
+//!
+//! A single DOCX paragraph may become a heading, a list item, a blockquote,
+//! or plain text depending on its style, numbering reference, and alignment.
+//! Track-change runs (insertions/deletions) are merged into contiguous spans
+//! to produce clean `<ins>` / `~~deletion~~` output.
 
 use super::{ConversionContext, RunConverter};
+use crate::localization::is_monospace_font;
 use crate::render::{
     escape_html_attr, escape_markdown_link_destination, escape_markdown_link_text,
 };
 use crate::Result;
 use rs_docx::document::{Hyperlink, Paragraph, ParagraphContent};
 
-/// Converter for Paragraph elements.
 pub struct ParagraphConverter;
 
-/// Segment of formatted text with consistent styling.
 #[derive(Debug, Clone, PartialEq, Default)]
 struct FormattedSegment {
     text: String,
@@ -24,28 +28,6 @@ struct FormattedSegment {
     is_subscript: bool,
     is_code: bool,
     anchor: Option<String>,
-}
-
-/// Returns true if the given font family name is a monospace font.
-fn is_monospace_font(fonts: &rs_docx::formatting::Fonts) -> bool {
-    let check = |name: &Option<String>| -> bool {
-        name.as_ref()
-            .map(|n| {
-                let lower = n.to_lowercase();
-                lower.contains("courier")
-                    || lower.contains("consolas")
-                    || lower.contains("mono")
-                    || lower.contains("source code")
-                    || lower.contains("fira code")
-                    || lower.contains("menlo")
-                    || lower.contains("dejavu sans mono")
-                    || lower.contains("liberation mono")
-                    || lower.contains("andale mono")
-                    || lower.contains("lucida console")
-            })
-            .unwrap_or(false)
-    };
-    check(&fonts.ascii) || check(&fonts.h_ansi)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

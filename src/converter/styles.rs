@@ -1,10 +1,14 @@
-//! Style resolver - handles style inheritance and property merging.
+//! Resolves OOXML's four-level style hierarchy into effective properties.
+//!
+//! DOCX styles form an inheritance chain: document defaults → base style →
+//! derived style → direct formatting. This module walks that chain for
+//! both character and paragraph properties so that downstream converters
+//! see a single merged result.
 
 use rs_docx::formatting::{CharacterProperty, ParagraphProperty};
 use rs_docx::styles::Style;
 use std::collections::HashMap;
 
-/// Resolver for DOCX styles and inheritance.
 pub struct StyleResolver<'a> {
     styles: &'a rs_docx::styles::Styles<'a>,
     style_map: HashMap<&'a str, &'a Style<'a>>,
@@ -88,19 +92,8 @@ impl<'a> StyleResolver<'a> {
     }
 
     fn apply_style_chain_char(&self, target: &mut CharacterProperty<'a>, style_id: &str) {
-        // Collect chain to apply from root to leaf (base -> derived)
-        // because we want derived styles to override base styles.
-        // However, the `merge_char_props` function assumes `target` is the accumulator (lower priority)
-        // and overrides it with the new props (higher priority).
-        // Wait, standard merge pattern: `base.merge(overlay)`.
-        // So we should start with Defaults (base), then apply Base Style, then Derived Style, then Direct.
-        // The `resolve_run_property` already initializes `target` with Defaults.
-        // So here we should apply styles from Base to Derived (Leaf).
-        // BUT, since we are doing `target = merge(target, new)`, where `new` overrides `target`,
-        // we should apply base styles first, then derived styles.
-        //
-        // Let's implement an iterator or recursion to go up to the root, then unwind.
-
+        // Walk up to the root style, then apply from root to leaf so that
+        // derived styles override base styles.
         let mut chain = Vec::new();
         let mut current_id = Some(style_id);
         let mut visited = std::collections::HashSet::new();
