@@ -31,12 +31,12 @@ jobs:
         run: cargo test --all-features
 
   msrv:
-    name: MSRV (Rust 1.82)
+    name: MSRV (Rust 1.83)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust 1.82
-        uses: dtolnay/rust-toolchain@1.82
+      - name: Set up Rust 1.83
+        uses: dtolnay/rust-toolchain@1.83
       - name: Check build with MSRV
         run: cargo check --all-features
 

@@ -6,7 +6,7 @@ Thank you for your interest in contributing. This guide covers everything you ne
 
 ### Prerequisites
 
-- Rust 1.82 or later (MSRV)
+- Rust 1.83 or later (MSRV)
 - `cargo` (comes with Rust via [rustup](https://rustup.rs))
 - For Python bindings: Python 3.12+, [maturin](https://github.com/PyO3/maturin) (`pip install maturin`)
 
