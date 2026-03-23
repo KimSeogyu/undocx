@@ -25,4 +25,12 @@ GitHub Actions workflow definitions for CI/CD automation.
 - Test workflow changes in a PR to verify they pass
 - The release workflow builds for multiple targets — ensure cross-compilation compatibility
 
+## Dependencies
+
+### Internal
+- `scripts/run_perf_benchmark.sh`, `scripts/generate_release_notes.sh`, `scripts/check_perf_threshold.sh`
+
+### External
+- GitHub Actions runners (ubuntu-latest, macos-latest, windows-latest)
+
 <!-- MANUAL: -->

@@ -25,4 +25,11 @@ CI/CD and build infrastructure scripts for benchmarking, release notes generatio
 - Run scripts locally before modifying to understand current behavior
 - Ensure scripts remain compatible with both local development and CI environments
 
+## Dependencies
+
+### Internal
+- `examples/perf_benchmark.rs` (benchmark binary)
+- `samples/` (benchmark input documents)
+- `output_tests/perf/` (benchmark output)
+
 <!-- MANUAL: -->

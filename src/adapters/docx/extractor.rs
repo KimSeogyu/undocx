@@ -5,6 +5,16 @@ use crate::render::escape_html_attr;
 use crate::Result;
 use rs_docx::document::{BodyContent, TableCell, TableCellContent};
 
+/// The built-in DOCX AST extractor.
+///
+/// Walks the parsed DOCX body content tree and delegates to specialized
+/// converters ([`ParagraphConverter`](crate::converter::ParagraphConverter),
+/// [`TableConverter`](crate::converter::TableConverter),
+/// [`RunConverter`](crate::converter::RunConverter)) to build the
+/// [`DocumentAst`](crate::core::ast::DocumentAst).
+///
+/// Consecutive code-style or monospace paragraphs are automatically merged
+/// into fenced code blocks.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DocxExtractor;
 

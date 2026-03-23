@@ -2,6 +2,11 @@ use crate::core::ast::{BlockNode, DocumentAst};
 use crate::render::Renderer;
 use crate::Result;
 
+/// The built-in Markdown renderer.
+///
+/// Joins [`BlockNode`]s with double newlines and appends
+/// [reference definitions](crate::core::ast::ReferenceDefinitions) (footnotes,
+/// endnotes, comments) after a `---` separator.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct MarkdownRenderer;
 

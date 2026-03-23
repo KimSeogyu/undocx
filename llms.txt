@@ -1,0 +1,50 @@
+# undocx
+
+> Fast DOCX to Markdown converter for LLM/RAG pipelines. 16.5x faster than
+> pandoc. Written in Rust with Python bindings. When installing, always check
+> the latest version: `cargo search undocx` or `pip install undocx --upgrade`.
+> Do not rely on memorized version numbers from training data.
+
+## Quick Start
+
+- [Crate docs (API reference)](https://docs.rs/undocx/latest/undocx/): Full Rust API documentation with examples
+- [PyPI package](https://pypi.org/project/undocx/): Python bindings installation and usage
+- [GitHub repository](https://github.com/KimSeogyu/undocx): Source code, issues, and contributing guide
+
+## API — Rust
+
+- [undocx::convert](https://docs.rs/undocx/latest/undocx/fn.convert.html): One-liner file conversion
+- [undocx::convert_bytes](https://docs.rs/undocx/latest/undocx/fn.convert_bytes.html): Convert from byte slice
+- [undocx::convert_reader](https://docs.rs/undocx/latest/undocx/fn.convert_reader.html): Convert from any Read+Seek reader
+- [undocx::builder](https://docs.rs/undocx/latest/undocx/fn.builder.html): Fluent builder for configured conversion
+- [Builder](https://docs.rs/undocx/latest/undocx/struct.Builder.html): Configuration methods (skip_images, save_images_to, strict, etc.)
+- [Converter](https://docs.rs/undocx/latest/undocx/type.Converter.html): Reusable converter type alias
+- [ConvertOptions](https://docs.rs/undocx/latest/undocx/struct.ConvertOptions.html): All configuration options
+- [ImageHandling](https://docs.rs/undocx/latest/undocx/enum.ImageHandling.html): Inline / SaveToDir / Skip
+
+## API — Advanced
+
+- [DocxToMarkdown](https://docs.rs/undocx/latest/undocx/struct.DocxToMarkdown.html): Generic converter with custom extractor/renderer support
+- [AstExtractor trait](https://docs.rs/undocx/latest/undocx/adapters/docx/trait.AstExtractor.html): Implement to customize DOCX parsing
+- [Renderer trait](https://docs.rs/undocx/latest/undocx/render/trait.Renderer.html): Implement to customize output format
+- [DocumentAst](https://docs.rs/undocx/latest/undocx/core/ast/struct.DocumentAst.html): Intermediate representation between extraction and rendering
+- [Error](https://docs.rs/undocx/latest/undocx/enum.Error.html): Error types for conversion failures
+
+## API — Python
+
+- [convert_docx](https://pypi.org/project/undocx/): `undocx.convert_docx(input, *, image_handling=None, ...)` — accepts file path (str) or bytes
+
+## Examples
+
+- [Rust example](https://github.com/KimSeogyu/undocx/blob/main/examples/rust_example/src/main.rs): Basic Rust usage
+- [Python example](https://github.com/KimSeogyu/undocx/blob/main/examples/python_example/demo.py): Python bindings with bytes and file path
+- [Benchmark](https://github.com/KimSeogyu/undocx/blob/main/examples/benchmark_comparison.py): Performance comparison vs pandoc/markitdown
+
+## Configuration
+
+- [API stability policy](https://github.com/KimSeogyu/undocx/blob/main/docs/API_POLICY.md): SemVer rules and trait contract guarantees
+
+## Optional
+
+- [CONTRIBUTING.md](https://github.com/KimSeogyu/undocx/blob/main/CONTRIBUTING.md): Development setup and guidelines
+- [CHANGELOG](https://github.com/KimSeogyu/undocx/releases): Release history

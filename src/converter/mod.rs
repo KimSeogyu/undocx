@@ -1,4 +1,18 @@
-//! Converter modules for DOCX to Markdown transformation.
+//! Core conversion engine for the DOCX → Markdown pipeline.
+//!
+//! This module contains [`DocxToMarkdown`], the main orchestrator, along with
+//! specialized converters for each document element type:
+//!
+//! | Converter | Responsibility |
+//! |-----------|----------------|
+//! | [`ParagraphConverter`] | Headings, lists, blockquotes, inline formatting |
+//! | [`TableConverter`] | HTML tables with cell merges |
+//! | [`RunConverter`] | Bold, italic, underline, code, links |
+//! | [`ImageExtractor`] | Image extraction (inline base64, save-to-dir, skip) |
+//! | [`NumberingResolver`] | Ordered/unordered list marker resolution |
+//! | [`StyleResolver`] | DOCX style ID → heading level / list style |
+//!
+//! [`ConversionContext`] carries shared mutable state through the pipeline.
 
 /// Test helper macros for creating `ConversionContext` without boilerplate.
 ///
@@ -116,7 +130,27 @@ pub use self::run::RunConverter;
 pub use self::styles::StyleResolver;
 pub use self::table::TableConverter;
 
-/// Main converter struct that orchestrates DOCX to Markdown conversion.
+/// Main converter that orchestrates the DOCX → AST → output pipeline.
+///
+/// Generic over an [`AstExtractor`] (`E`) and a [`Renderer`] (`R`).
+/// The defaults — [`DocxExtractor`] and [`MarkdownRenderer`] — are used
+/// by [`Converter`](crate::Converter), [`builder()`](crate::builder), and
+/// the top-level convenience functions.
+///
+/// # Examples
+///
+/// ```no_run
+/// // Simplest usage via the Converter alias
+/// let md = undocx::convert("report.docx").unwrap();
+///
+/// // With options via builder
+/// let md = undocx::builder()
+///     .skip_images()
+///     .convert("report.docx")
+///     .unwrap();
+/// ```
+///
+/// See [`with_components`](Self::with_components) for custom pipelines.
 pub struct DocxToMarkdown<E = DocxExtractor, R = MarkdownRenderer> {
     options: ConvertOptions,
     extractor: E,
@@ -124,7 +158,8 @@ pub struct DocxToMarkdown<E = DocxExtractor, R = MarkdownRenderer> {
 }
 
 impl DocxToMarkdown<DocxExtractor, MarkdownRenderer> {
-    /// Creates a new converter with the given options.
+    /// Creates a new converter with the given options, using the built-in
+    /// [`DocxExtractor`] and [`MarkdownRenderer`].
     pub fn new(options: ConvertOptions) -> Self {
         Self {
             options,
@@ -136,6 +171,11 @@ impl DocxToMarkdown<DocxExtractor, MarkdownRenderer> {
     /// Creates a new converter with default options.
     pub fn with_defaults() -> Self {
         Self::new(ConvertOptions::default())
+    }
+
+    /// Creates a [`Builder`](crate::Builder) for fluent configuration.
+    pub fn builder() -> crate::Builder {
+        crate::Builder::new()
     }
 }
 
@@ -165,20 +205,14 @@ where
         }
     }
 
-    /// Converts a DOCX file to Markdown.
+    /// Converts a DOCX file at the given path to the output format.
     ///
-    /// # Arguments
-    /// * `path` - Path to the DOCX file
+    /// # Errors
     ///
-    /// # Returns
-    /// The converted Markdown content as a String.
-    /// Converts a DOCX file to Markdown.
-    ///
-    /// # Arguments
-    /// * `path` - Path to the DOCX file
-    ///
-    /// # Returns
-    /// The converted Markdown content as a String.
+    /// Returns [`Error::DocxParse`](crate::Error::DocxParse) if the file cannot
+    /// be parsed, [`Error::Io`](crate::Error::Io) for file-system errors, or
+    /// [`Error::MissingReference`](crate::Error::MissingReference) when strict
+    /// validation is enabled and a reference target is missing.
     pub fn convert<P: AsRef<Path>>(&self, path: P) -> Result<String> {
         let path = path.as_ref();
 
@@ -199,14 +233,12 @@ where
         self.convert_inner(&docx, &mut image_extractor)
     }
 
-    /// Converts a DOCX file from bytes to Markdown.
+    /// Converts DOCX bytes to the output format.
     ///
-    /// # Arguments
-    /// * `bytes` - The DOCX file content as bytes
+    /// # Errors
     ///
-    /// # Returns
-    /// The converted Markdown content as a String.
-    pub fn convert_from_bytes(&self, bytes: &[u8]) -> Result<String> {
+    /// Same error conditions as [`convert`](Self::convert).
+    pub fn convert_bytes(&self, bytes: &[u8]) -> Result<String> {
         let reader = std::io::Cursor::new(bytes);
         let docx_file =
             DocxFile::from_reader(reader).map_err(|e| Error::DocxParse(format!("{:?}", e)))?;
@@ -224,6 +256,22 @@ where
         };
 
         self.convert_inner(&docx, &mut image_extractor)
+    }
+
+    /// Converts DOCX from a reader to the output format.
+    ///
+    /// The reader must implement both [`Read`](std::io::Read) and
+    /// [`Seek`](std::io::Seek) because DOCX is a ZIP archive.
+    pub fn convert_reader(&self, mut reader: impl std::io::Read + std::io::Seek) -> Result<String> {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes)?;
+        self.convert_bytes(&bytes)
+    }
+
+    /// Converts DOCX bytes to the output format.
+    #[deprecated(since = "0.5.0", note = "Use `convert_bytes` instead")]
+    pub fn convert_from_bytes(&self, bytes: &[u8]) -> Result<String> {
+        self.convert_bytes(bytes)
     }
 
     fn convert_inner<'a>(
@@ -570,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn test_with_components_convert_from_bytes_uses_custom_pipeline() {
+    fn test_with_components_convert_bytes_uses_custom_pipeline() {
         let path = temp_docx_path("bytes");
         rs_docx::Docx::default()
             .write_file(&path)
@@ -581,7 +629,7 @@ mod tests {
         let converter =
             DocxToMarkdown::with_components(ConvertOptions::default(), FakeExtractor, FakeRenderer);
         let rendered = converter
-            .convert_from_bytes(&bytes)
+            .convert_bytes(&bytes)
             .expect("conversion from bytes should succeed");
 
         assert_eq!(rendered, "blocks=1;footnotes=1;first=");
