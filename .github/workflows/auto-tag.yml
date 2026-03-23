@@ -44,3 +44,11 @@ jobs:
           git tag -a "v${{ steps.version.outputs.version }}" -m "Release v${{ steps.version.outputs.version }}"
           git push origin "v${{ steps.version.outputs.version }}"
           echo "Created and pushed tag v${{ steps.version.outputs.version }}"
+
+      # Tags created by GITHUB_TOKEN don't trigger other workflows.
+      # Use workflow_dispatch (exempt from this limitation) to trigger release.
+      - name: Trigger release workflow
+        if: steps.check.outputs.exists == 'false'
+        run: gh workflow run release.yml --ref "v${{ steps.version.outputs.version }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
