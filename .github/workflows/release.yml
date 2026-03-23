@@ -12,19 +12,62 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run clippy
+        run: cargo clippy --all-features --tests -- -D warnings
+
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-      - name: Run clippy (deny warnings)
-        run: cargo clippy --all-features --tests -- -D warnings
+      - uses: dtolnay/rust-toolchain@stable
       - name: Run tests
         run: cargo test --all-features
+
+  check-platforms:
+    name: Compile (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check compilation
+        run: cargo check
+
+  msrv:
+    name: MSRV (Rust 1.83)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.83
+      - name: Check build with MSRV
+        run: cargo check
+
+  python_integration:
+    name: Python integration test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build and test Python binding
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install maturin
+          maturin develop --features python
+          python -c "import undocx; print('Python binding OK')"
 
   # Ensure release tags point to commits already merged into main.
   release_guard:
@@ -44,7 +87,7 @@ jobs:
   build_wheels:
     name: Build wheels (${{ matrix.os }})
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, release_guard]
+    needs: [lint, test, release_guard]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -104,7 +147,7 @@ jobs:
   sdist:
     name: Build source distribution
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, release_guard]
+    needs: [lint, test, release_guard]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -138,7 +181,7 @@ jobs:
     name: Publish to crates.io
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, release_guard]
+    needs: [lint, test, release_guard]
     environment: production
     steps:
       - uses: actions/checkout@v4

@@ -5,7 +5,12 @@
 [![docs.rs](https://docs.rs/undocx/badge.svg)](https://docs.rs/undocx)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Fast, accurate DOCX to Markdown converter written in Rust with Python bindings.
+Fast, accurate DOCX to Markdown converter built for LLM/RAG pipelines. Written in Rust with Python bindings.
+
+- **Blazing fast**: ~3.3ms per file average (16.5x faster than pandoc)
+- **LLM-optimized**: Clean Markdown output ready for embeddings, chunking, and retrieval
+- **Dual interface**: Python library for ML pipelines + CLI for batch processing
+- **Full fidelity**: Tables, footnotes, track changes, images, nested lists, and more
 
 ## Conversion Demo
 
@@ -15,8 +20,8 @@ Fast, accurate DOCX to Markdown converter written in Rust with Python bindings.
 <td align="center" width="50%"><strong>Markdown (output)</strong></td>
 </tr>
 <tr>
-<td valign="top"><a href="docs/undocx_showcase.pdf"><img src="docs/images/demo-docx.png" alt="DOCX input document"/></a></td>
-<td valign="top"><a href="docs/undocx_showcase.md"><img src="docs/images/demo-markdown.png" alt="Converted Markdown output"/></a></td>
+<td valign="top"><a href="https://github.com/KimSeogyu/undocx/blob/main/docs/undocx_showcase.pdf"><img src="https://raw.githubusercontent.com/KimSeogyu/undocx/main/docs/images/demo-docx.png" alt="DOCX input document"/></a></td>
+<td valign="top"><a href="https://github.com/KimSeogyu/undocx/blob/main/docs/undocx_showcase.md"><img src="https://raw.githubusercontent.com/KimSeogyu/undocx/main/docs/images/demo-markdown.png" alt="Converted Markdown output"/></a></td>
 </tr>
 </table>
 
@@ -32,7 +37,7 @@ cargo install undocx        # CLI
 ```toml
 # Rust library
 [dependencies]
-undocx = "0.3"
+undocx = "0.4"
 ```
 
 ## Quick Start
@@ -102,6 +107,54 @@ let converter = DocxToMarkdown::with_components(
 
 See [docs/API_POLICY.md](docs/API_POLICY.md) for stability guarantees on these traits.
 
+## Benchmarks
+
+Measured on 39 DOCX files × 10 iterations (see `examples/benchmark_comparison.py`):
+
+| Tool | Avg (ms) | Median (ms) | Min (ms) | Max (ms) |
+|------|----------|-------------|----------|----------|
+| **undocx** | **3.34** | **3.22** | **2.89** | **5.46** |
+| markitdown | 18.25 | 17.45 | 14.63 | 41.81 |
+| pandoc | 55.08 | 54.11 | 40.31 | 69.51 |
+
+**undocx is 16.5x faster than pandoc and 5.5x faster than markitdown.**
+
+Run locally: `python examples/benchmark_comparison.py ./tests/pandoc 10`
+
+## Comparison
+
+| Feature | undocx | pandoc | markitdown |
+|---------|--------|--------|------------|
+| Language | Rust | Haskell | Python |
+| Speed (avg) | 3.3ms/file | 55ms/file | 18ms/file |
+| Tables (colspan/rowspan) | Yes | Partial | Yes |
+| Track changes | Yes | Yes | No |
+| Footnotes/Endnotes | Yes | Yes | No |
+| Comments | Yes | No | No |
+| VML legacy images | Yes | No | No |
+| Korean numbering | Yes | No | No |
+| Python API | Yes | CLI only | Yes |
+| Rust API | Yes | No | No |
+
+## For LLM/RAG Users
+
+undocx is designed for document preprocessing in AI pipelines:
+
+```python
+import undocx
+
+# Skip images for text-only RAG ingestion
+md = undocx.convert_docx("report.docx", image_handling="skip")
+
+# Process bytes from S3, HTTP, etc.
+md = undocx.convert_docx(doc_bytes, image_handling="skip")
+```
+
+**Tips for RAG pipelines:**
+- Use `image_handling="skip"` to reduce token count
+- Output is clean Markdown — split on `## ` headers for semantic chunking
+- Footnotes and comments are preserved as `[^ref]` for full context
+
 ## Development
 
 ```bash
@@ -110,6 +163,8 @@ cargo clippy --all-features --tests -- -D warnings         # lint
 ./scripts/run_perf_benchmark.sh                            # bench
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE)

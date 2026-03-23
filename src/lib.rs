@@ -125,9 +125,45 @@ mod python_bindings {
     /// Converts a DOCX file to Markdown.
     ///
     /// Argument can be a file path (str) or file content (bytes).
+    ///
+    /// Optional keyword arguments:
+    /// - image_handling: "inline" | "skip" | path string (save images to that directory)
+    /// - preserve_whitespace: bool
+    /// - html_underline: bool
+    /// - html_strikethrough: bool
+    /// - strict_reference_validation: bool
     #[pyfunction]
-    fn convert_docx(input: &Bound<'_, PyAny>) -> PyResult<String> {
-        let options = ConvertOptions::default();
+    #[pyo3(signature = (input, *, image_handling=None, preserve_whitespace=None, html_underline=None, html_strikethrough=None, strict_reference_validation=None))]
+    fn convert_docx(
+        input: &Bound<'_, PyAny>,
+        image_handling: Option<String>,
+        preserve_whitespace: Option<bool>,
+        html_underline: Option<bool>,
+        html_strikethrough: Option<bool>,
+        strict_reference_validation: Option<bool>,
+    ) -> PyResult<String> {
+        let mut options = ConvertOptions::default();
+
+        if let Some(handling) = image_handling {
+            options.image_handling = match handling.as_str() {
+                "inline" => ImageHandling::Inline,
+                "skip" => ImageHandling::Skip,
+                path => ImageHandling::SaveToDir(PathBuf::from(path)),
+            };
+        }
+        if let Some(v) = preserve_whitespace {
+            options.preserve_whitespace = v;
+        }
+        if let Some(v) = html_underline {
+            options.html_underline = v;
+        }
+        if let Some(v) = html_strikethrough {
+            options.html_strikethrough = v;
+        }
+        if let Some(v) = strict_reference_validation {
+            options.strict_reference_validation = v;
+        }
+
         let converter = DocxToMarkdown::new(options);
 
         if let Ok(path) = input.extract::<String>() {
