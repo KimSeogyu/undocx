@@ -1,5 +1,7 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
+  "url": "https://context7.com/kimseogyu/undocx",
+  "public_key": "pk_dAmKLscVJZ9Ugwsg6Dj8N",
   "projectTitle": "undocx",
   "description": "Fast DOCX to Markdown converter for LLM/RAG pipelines. 16.5x faster than pandoc. Rust library with Python bindings.",
   "folders": [
