@@ -31,12 +31,12 @@ jobs:
         run: cargo test --all-features
 
   msrv:
-    name: MSRV (Rust 1.75)
+    name: MSRV (Rust 1.82)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust 1.75
-        uses: dtolnay/rust-toolchain@1.75
+      - name: Set up Rust 1.82
+        uses: dtolnay/rust-toolchain@1.82
       - name: Check build with MSRV
         run: cargo check --all-features
 
@@ -54,11 +54,18 @@ jobs:
         with:
           toolchain: stable
       - name: Install maturin
-        run: pip install maturin
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install maturin
       - name: Build and install Python bindings
-        run: maturin develop --features python
+        run: |
+          . .venv/bin/activate
+          maturin develop --features python
       - name: Run Python smoke test
-        run: python -c "import undocx; print('Python binding OK')"
+        run: |
+          . .venv/bin/activate
+          python -c "import undocx; print('Python binding OK')"
 
   # Ensure release tags point to commits already merged into main.
   release_guard:
