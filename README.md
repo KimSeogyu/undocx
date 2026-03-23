@@ -32,7 +32,7 @@ cargo install undocx        # CLI
 ```toml
 # Rust library
 [dependencies]
-undocx = "0.3"
+undocx = "0.4"
 ```
 
 ## Quick Start
